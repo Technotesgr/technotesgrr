@@ -1,13 +1,71 @@
 <!DOCTYPE html>
 <html lang="el">
   <head>
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-V5G4FP7F9Z"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag() {
+        dataLayer.push(arguments);
+      }
+      gtag('consent', 'default', {
+        analytics_storage: 'denied',
+        ad_storage: 'denied',
+        ad_user_data: 'denied',
+        ad_personalization: 'denied',
+      });
+      try {
+        var consent = JSON.parse(localStorage.getItem('technotesgr_cookie_consent_v1') || 'null');
+        if (consent && consent.status === 'accepted') {
+          gtag('consent', 'update', { analytics_storage: 'granted' });
+        }
+      } catch (e) {}
+      gtag('js', new Date());
+      gtag('config', 'G-V5G4FP7F9Z');
+    </script>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Technotesgr</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Πληροφορική Πανελλήνιες | Technotes</title>
+
+    <link rel="icon" href="/favicon.ico?v=5" type="image/x-icon" sizes="any" />
+    <link rel="icon" href="/favicon.png?v=5" type="image/png" sizes="32x32" />
+    <link rel="shortcut icon" href="/favicon.ico?v=5" type="image/x-icon" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=5" />
+    <!-- manifest link is injected automatically by vite-plugin-pwa -->
+    <meta name="theme-color" content="#ff97b2" />
+
+    <!-- PWA / installed-app behavior (iOS Safari doesn't read the manifest for these) -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="TechNotesGR" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- Fallback SEO (ενημερώνεται δυναμικά από SeoHead) -->
+    <meta
+      name="description"
+      content="Δωρεάν προετοιμασία Πληροφορικής Πανελληνίων: quiz, flashcards, ΑΕΠΠ, δομημένος προγραμματισμός και ασκήσεις για Γ' Λυκείου."
+    />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://www.technotes.gr/" />
+
+    <!-- LCP: preload mobile hero before JS boots (light theme = PageSpeed default) -->
+    <link
+      rel="preload"
+      as="image"
+      type="image/webp"
+      href="/images/home%20page/bc11-800.webp"
+      imagesrcset="/images/home%20page/bc11-800.webp 800w, /images/home%20page/bc11-1280.webp 1280w"
+      imagesizes="100vw"
+      fetchpriority="high"
+    />
+    <!-- Nav pixel icons (WebP 96×96, ~3 KB each) -->
+    <link rel="preload" as="image" type="image/webp" href="/images/home%20page/16-96.webp" fetchpriority="high" />
+    <link rel="preload" as="image" type="image/webp" href="/images/logo-80.webp" fetchpriority="high" />
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/index.jsx"></script>
+    <script src="/env.js"></script>
+    <script type="module" src="/src/index.tsx"></script>
   </body>
 </html>

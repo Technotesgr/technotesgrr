@@ -1,64 +1,97 @@
-import React from 'react';
+import React, { lazy } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
 
-// Public Pages
+// Home is eager so refresh on "/" paints immediately (no extra chunk wait).
 import HomePage from '@/pages/public/HomePage';
-import LoginPage from '@/pages/auth/LoginPage';
-import RegisterPage from '@/pages/auth/RegisterPage';
-import AboutPage from '@/pages/public/AboutMe';
-import MerchPage from '@/pages/public/MerchPage';
-import PrivacyPolicyPage from '@/pages/public/PrivacyPolicyPage';
-import DataProtectionPage from '@/pages/public/DataProtectionPage';
+const AboutPage = lazy(() => import('@/pages/public/AboutMe'));
+// const MerchPage = lazy(() => import('@/pages/public/MerchPage'));
+const PrivacyPolicyPage = lazy(() => import('@/pages/public/PrivacyPolicyPage'));
+const DataProtectionPage = lazy(() => import('@/pages/public/DataProtectionPage'));
+export const loadGloglossaPage = () => import('@/pages/public/GloglossaEmbedPage');
+const GloglossaEmbedPage = lazy(loadGloglossaPage);
+const VivliaPage = lazy(() => import('@/pages/public/VivliaPage'));
+const AnnouncementsPage = lazy(() => import('@/pages/public/AnnouncementsTablePage'));
+const FaqPage = lazy(() => import('@/pages/public/FaqPage'));
+// const LoginPage = lazy(() => import('@/pages/public/LoginPage'));
+// const RegisterPage = lazy(() => import('@/pages/public/RegisterPage'));
+// const ForgotPasswordPage = lazy(() => import('@/pages/public/ForgotPasswordPage'));
+// const ResetPasswordPage = lazy(() => import('@/pages/public/ResetPasswordPage'));
 
 // User Pages (Protected)
-// import NotesPage from '@/pages/private/NotesPage';
-import QuizPage from '@/pages/private/QuizPage';
-import FlashcardsPage from '@/pages/private/FlashcardsPage';
-import LeaderboardPage from '@/pages/public/LeaderboardPage';
-import AlgorithmsPage from '@/pages/private/AlgorithmsPage';
-import PaliathemataPage from '@/pages/private/PaliathemataPage';
-import OnlinePage from '@/pages/private/OnlinePage';
-import ProsanatolismosPage from '@/pages/private/ProsanatolismosPage';
-import ProfilePage from '@/pages/private/ProfilePage';
-import NotFound from '@/pages/other/NotFound';
-import NotAuthorized from '@/pages/other/NotAuthorized';
+const loadQuizPage = () => import('@/pages/private/QuizPage');
+const loadFlashcardsPage = () => import('@/pages/private/FlashcardsPage');
+const loadProgressTrackerPage = () => import('@/pages/private/ProgressTrackerPage');
+const loadProsanatolismosPage = () => import('@/pages/private/ProsanatolismosPage');
 
-import SchoolsPage from '@/pages/private/SchoolsPage';
-// Admin Pages
-import AdminDashboard from '@/pages/admin/AdminDashboard';
+const QuizPage = lazy(loadQuizPage);
+const FlashcardsPage = lazy(loadFlashcardsPage);
+const LeaderboardPage = lazy(() => import('@/pages/public/LeaderboardPage'));
+const AlgorithmsPage = lazy(() => import('@/pages/private/AlgorithmsPage'));
+const DataStructuresPage = lazy(() => import('@/pages/private/DataStructuresPage'));
+const PaliathemataPage = lazy(() => import('@/pages/private/PaliathemataPage'));
+// const OnlinePage = lazy(() => import('@/pages/private/OnlinePage'));
+const ProsanatolismosPage = lazy(loadProsanatolismosPage);
+const StudyTimerPage = lazy(() => import('@/pages/private/StudyTimerPage'));
+const ThankYouPage = lazy(() => import('@/pages/public/ThankYouPage'));
+const NotFound = lazy(() => import('@/pages/other/NotFound'));
+
+const SchoolsPage = lazy(() => import('@/pages/private/SchoolsPage'));
+
+function SchoolCompareRedirect() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.set('view', 'compare');
+  return <Navigate to={`/sxoles?${params.toString()}`} replace />;
+}
+const ProgressTrackerPage = lazy(loadProgressTrackerPage);
+const MethodologiesPage = lazy(() => import('@/pages/private/MethodologiesPage'));
+const AskiseisPage = lazy(() => import('@/pages/private/AskiseisPage'));
+// const AiCorrectorPage = lazy(() => import('@/pages/private/AiCorrectorPage'));
+const SchoolCoefficientsPage = lazy(() => import('@/pages/private/SchoolCoefficientsPage'));
+const MoriaCalculatorPage = lazy(() => import('@/pages/private/MoriaCalculatorPage'));
+const SaekPage = lazy(() => import('@/pages/private/SaekPage'));
+const MixanografikoPage = lazy(() => import('@/pages/private/MixanografikoPage'));
+const AntistoixiesSxolonPage = lazy(() => import('@/pages/private/AntistoixiesSxolonPage'));
+const MeteggrafesPage = lazy(() => import('@/pages/private/MeteggrafesPage'));
 
 // Type Definition
 export type RouteConfig = {
   path: string;
   element: React.ReactNode;
-  protected?: boolean;
-  roles?: Array<'user' | 'admin'>;
   children?: RouteConfig[];
 };
 
+/** Μόνο τα πιο συχνά routes — λιγότερο parse/main thread μετά το login (κοινότητα/progress κ.λπ. από hover). */
+export const prefetchCriticalPrivateRoutes = () => {
+  void loadQuizPage();
+  void loadFlashcardsPage();
+  void import('@/utils/quizUtils').then((m) => {
+    void m.fetchAllQuizzes().catch(() => {});
+  });
+  void import('@/utils/flashcards');
+};
+
+/** Chat widget: μόνο δημόσιες «εισόδου» / αρχικές σελίδες — όχι quiz, flashcards, κ.λπ. */
+export function shouldShowChatWidgetOnPath(pathname: string): boolean {
+  const p =
+    pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+  const allowList = new Set(['/', '/about', '/privacy-policy', '/data', '/announcements']);
+  return allowList.has(p);
+}
+
 const routes: RouteConfig[] = [
-  // ═══════════════════════════════════════════════════════════════
-  // 🔓 PUBLIC ROUTES
-  // ═══════════════════════════════════════════════════════════════
   {
     path: '/',
     element: <HomePage />,
   },
   {
-    path: '/login',
-    element: <LoginPage />,
-  },
-  {
-    path: '/register',
-    element: <RegisterPage />,
-  },
-  {
     path: '/about',
     element: <AboutPage />,
   },
-  {
-    path: '/merch',
-    element: <MerchPage />,
-  },
+  // {
+  //   path: '/merch',
+  //   element: <MerchPage />,
+  // },
   {
     path: '/privacy-policy',
     element: <PrivacyPolicyPage />,
@@ -68,89 +101,134 @@ const routes: RouteConfig[] = [
     element: <DataProtectionPage />,
   },
   {
-    path: '/not-authorized',
-    element: <NotAuthorized />,
+    path: '/gloglossa',
+    element: <GloglossaEmbedPage />,
   },
-
-  // ═══════════════════════════════════════════════════════════════
-  // 🔒 USER ROUTES (Requires Login)
-  // ═══════════════════════════════════════════════════════════════
-
-    // path: '/notes',
-    // element: <NotesPage />,
-    // // protected: true,
-    // // roles: ['user', 'admin'],
-  
+  {
+    path: '/vivlia',
+    element: <VivliaPage />,
+  },
+  {
+    path: '/announcements',
+    element: <AnnouncementsPage />,
+  },
+  {
+    path: '/thank-you',
+    element: <ThankYouPage />,
+  },
+  {
+    path: '/terms',
+    element: <Navigate to="/privacy-policy" replace />,
+  },
+  {
+    path: '/terms-of-service',
+    element: <Navigate to="/privacy-policy" replace />,
+  },
+  {
+    path: '/faq',
+    element: <FaqPage />,
+  },
+  // {
+  //   path: '/login',
+  //   element: <LoginPage />,
+  // },
+  // {
+  //   path: '/register',
+  //   element: <RegisterPage />,
+  // },
+  // {
+  //   path: '/forgot-password',
+  //   element: <ForgotPasswordPage />,
+  // },
+  // {
+  //   path: '/reset-password',
+  //   element: <ResetPasswordPage />,
+  // },
   {
     path: '/quiz',
     element: <QuizPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
   },
   {
     path: '/flashcards',
     element: <FlashcardsPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
   },
   {
     path: '/leaderboard',
     element: <LeaderboardPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
   },
   {
     path: '/algorithms',
     element: <AlgorithmsPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
+  },
+  {
+    path: '/domes-dedomenon',
+    element: <DataStructuresPage />,
   },
   {
     path: '/paliathemata',
     element: <PaliathemataPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
   },
-  {
-    path: '/online',
-    element: <OnlinePage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
-  },
+  // {
+  //   path: '/online',
+  //   element: <OnlinePage />,
+  // },
   {
     path: '/prosanatolismos',
     element: <ProsanatolismosPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
   },
   {
-    path: '/profile',
-    element: <ProfilePage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
+    path: '/study-timer',
+    element: <StudyTimerPage />,
   },
-   {
+  {
     path: '/sxoles',
     element: <SchoolsPage />,
-    // protected: true,
-    // roles: ['user', 'admin'],
   },
-  
-
-
-  // ═══════════════════════════════════════════════════════════════
-  // 🛡️ ADMIN ROUTES
-  // ═══════════════════════════════════════════════════════════════
   {
-    path: '/admin',
-    element: <AdminDashboard />,
-    protected: true,
-    roles: ['admin'],
+    path: '/sygkrisi-mathimaton',
+    element: <SchoolCompareRedirect />,
+  },
+  {
+    path: '/progress-tracker',
+    element: <ProgressTrackerPage />,
+  },
+  {
+    path: '/methodologies',
+    element: <MethodologiesPage />,
+  },
+  {
+    path: '/askiseis',
+    element: <AskiseisPage />,
+  },
+  // {
+  //   path: '/ai-corrector',
+  //   element: <AiCorrectorPage />,
+  // },
+  {
+    path: '/syntelestes-sxolon',
+    element: <SchoolCoefficientsPage />,
+  },
+  {
+    path: '/ypologismos-morion',
+    element: <MoriaCalculatorPage />,
+  },
+  {
+    path: '/saek',
+    element: <SaekPage />,
+  },
+  {
+    path: '/mixanografiko',
+    element: <MixanografikoPage />,
+  },
+  {
+    path: '/antistoixies-sxolon',
+    element: <AntistoixiesSxolonPage />,
+  },
+  {
+    path: '/meteggrafes',
+    element: <MeteggrafesPage />,
   },
 
-  // ═══════════════════════════════════════════════════════════════
-  // ⚠️ 404 NOT FOUND
-  // ═══════════════════════════════════════════════════════════════
   {
     path: '*',
     element: <NotFound />,

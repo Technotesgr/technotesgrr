@@ -1,32 +1,23 @@
-import React, { useCallback, useEffect, useId, useState, Suspense } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
+﻿import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  motion,
-  useScroll,
-  useTransform,
-  MotionConfig,
-  AnimatePresence,
-  useMotionValue,
-  useSpring,
-} from 'framer-motion';
+import { motion, MotionConfig, AnimatePresence } from 'framer-motion';
+import { ChevronLeft, ChevronRight, Volume2, VolumeX } from 'lucide-react';
+import { MENU_ICONS, MenuIconImg } from '@/data/menuIcons';
+import { getPreferredTheme } from '@/utils/theme';
+import { OptimizedImg } from '@/components/other/OptimizedImg';
+// import { getBackendUrl } from '@/utils/backendUrl';
+// import { apiFetch } from '@/utils/apiClient';
+// import { FiSend } from 'react-icons/fi';
 
 // --- Types & Interfaces ---
 
-interface ContactFormState {
-  firstName: string;
-  lastName: string;
-  email: string;
-  message: string;
-  website: string;
-}
-
-interface HeroImage {
-  src: string;
-  alt: string;
-  delay: number;
-  rotation: number;
-}
+// interface ContactFormState {
+//   firstName: string;
+//   lastName: string;
+//   email: string;
+//   message: string;
+//   website: string;
+// }
 
 interface Review {
   name: string;
@@ -34,12 +25,23 @@ interface Review {
   description: string;
 }
 
-interface Feature {
+interface FeatureCategoryItem {
+  label: string;
+  path: string;
+  iconSrc: string;
+}
+
+interface FeatureCategory {
   title: string;
   desc: string;
-  icon: string;
-  gradient: string;
+  items: FeatureCategoryItem[];
 }
+
+// interface ContactResponse {
+//   message: string;
+//   submission_id: number;
+//   email_sent?: boolean;
+// }
 
 interface FaqItem {
   question: string;
@@ -48,63 +50,85 @@ interface FaqItem {
 
 // ---------- MOCK DATA ----------
 
-const heroImages: HeroImage[] = [
-  { src: '/images/1.jpg', alt: 'Algorithm flow chart', delay: 0.1, rotation: 3 },
-  { src: '/images/2.jpg', alt: 'Student using quiz', delay: 0.3, rotation: -4 },
-  { src: '/images/3.jpg', alt: 'Flashcards on screen', delay: 0.5, rotation: 5 },
-  { src: '/images/4.jpg', alt: 'Retro terminal interface', delay: 0.7, rotation: -2 },
+function heroSrcSet(basename: 'hero-light' | 'hero-dark'): string {
+  return [800, 1280, 1920, 2560, 3840]
+    .map((w) => `/images/home%20page/${basename}-${w}.webp ${w}w`)
+    .join(', ');
+}
+
+const HERO_LIGHT_SRC = '/images/home%20page/hero-light-1920.webp';
+const HERO_DARK_SRC = '/images/home%20page/hero-dark-1920.webp';
+const HERO_LIGHT_SRCSET = heroSrcSet('hero-light');
+const HERO_DARK_SRCSET = heroSrcSet('hero-dark');
+
+const SHOWCASE_VIDEOS = [
+  '/videos/v24044gl0000d8dc50vog65ursbvt0u0.MP4',
+  '/videos/v24044gl0000d8ptjgnog65tm9lv8qug.MP4',
+  '/videos/v24044gl0000d93vpsfog65oopq68cbg.MP4',
 ];
 
 const reviewsData: Review[] = [
   {
-    name: 'Μαρία Π.',
+    name: 'Ρία Κ. Απόφοιτη 2025',
     rating: 5,
     description:
       'Οι σημειώσεις είναι εξαιρετικές! Με βοήθησαν πάρα πολύ να κατανοήσω την ύλη της πληροφορικής. Το quiz είναι διασκεδαστικό και εκπαιδευτικό!',
   },
   {
-    name: 'Γιάννης Κ.',
+    name: "Χριστίνα Σ. Μαθήτρια Γ' Λυκείου",
     rating: 5,
     description:
       'Φανταστικό site! Οι flashcards με βοήθησαν να επαναλάβω γρήγορα όλες τις έννοιες. Τώρα νιώθω πιο σίγουρος για τις πανελλαδικές!',
   },
   {
-    name: 'Ελένη Σ.',
-    rating: 4,
+    name: "Ντέμυ Λ. Μαθήτρια Γ' Λυκείου",
+    rating: 5,
     description:
       'Πολύ καλή πλατφόρμα για προετοιμασία! Οι οπτικοποιήσεις των αλγορίθμων είναι πολύ χρήσιμες. Συνιστώ ανεπιφύλακτα!',
   },
   {
-    name: 'Νίκος Α.',
+    name: "Βικτώρια Κ. Μαθητρια Γ' Λυκείου",
     rating: 5,
     description: 'Οι ερωτήσεις είναι πολύ καλά δομημένες και με προετοιμάζουν σωστά.',
   },
   {
-    name: 'Αγγελική Β.',
+    name: "Αγγελική Β. Μαθήτρια Β' Λυκείου",
     rating: 5,
     description:
       'Εξαιρετικό εργαλείο μελέτης! Τα παιχνίδια οπτικοποίησης με βοήθησαν να καταλάβω καλύτερα τους αλγορίθμους. Ευχαριστώ πολύ!',
   },
 ];
 
-const featuresData: Feature[] = [
+const featureCategoriesData: FeatureCategory[] = [
   {
-    title: 'Online Καταγεγραμμένα Μαθήματα',
-    desc: 'Καλύπτουν σε βάθος τη θεωρία,μεθοδολογίες της ύλης και λυμένες ασκήσεις.',
-    icon: '📚',
-    gradient: 'from-pink-500 to-rose-500',
+    title: 'Για πριν τις πανελλήνιες',
+    desc: 'Όλα τα εργαλεία μελέτης και εξάσκησης για να φτάσεις προετοιμασμένος/η στις εξετάσεις.',
+    items: [
+      { label: 'Flashcards', path: '/flashcards', iconSrc: MENU_ICONS.flashcards },
+      { label: 'Quiz', path: '/quiz', iconSrc: MENU_ICONS.quiz },
+      { label: 'Παλιά Θέματα', path: '/paliathemata', iconSrc: MENU_ICONS.paliathemata },
+      { label: 'Μεθοδολογίες', path: '/methodologies', iconSrc: MENU_ICONS.methodologies },
+      { label: 'Οπτικοποίηση δομών', path: '/domes-dedomenon', iconSrc: MENU_ICONS.dataStructures },
+      { label: 'Ασκήσεις', path: '/askiseis', iconSrc: MENU_ICONS.askiseis },
+      { label: 'Διερμηνευτής ΓΛΩΣΣΑΣ', path: '/gloglossa', iconSrc: MENU_ICONS.gloglossa },
+      { label: 'Σχολικά βιβλία', path: '/vivlia', iconSrc: MENU_ICONS.vivlia },
+      { label: 'Study Timer', path: '/study-timer', iconSrc: MENU_ICONS.studyTimer },
+      { label: 'Tracker Ύλης', path: '/progress-tracker', iconSrc: MENU_ICONS.progressTracker },
+    ],
   },
   {
-    title: 'Quiz',
-    desc: 'Δοκίμασε γνώσεις με έξυπνα, στοχευμένα ερωτήματα τα οποία έχουν εξεταστεί σε προηγούμενες Πανελλήνιες εξετάσεις.',
-    icon: '🎯',
-    gradient: 'from-purple-500 to-indigo-500',
-  },
-  {
-    title: 'Flashcards',
-    desc: 'Γρήγορη επανάληψη σε όλες τις έννοιες του σχολικού βιβλίου.',
-    icon: '🧠',
-    gradient: 'from-blue-500 to-cyan-500',
+    title: 'Για μετά τις πανελλήνιες',
+    desc: 'Οδηγός για σχολές, μόρια και τα επόμενα βήματα μετά τις εξετάσεις.',
+    items: [
+      { label: 'Σχολές', path: '/sxoles', iconSrc: MENU_ICONS.schools },
+      { label: 'Βάσεις Σχολών', path: '/ypologismos-morion', iconSrc: MENU_ICONS.ypologismosMorion },
+      { label: 'Συντελεστές', path: '/syntelestes-sxolon', iconSrc: MENU_ICONS.syntelestesSxolon },
+      { label: 'Αντιστοιχίες Σχολών', path: '/antistoixies-sxolon', iconSrc: MENU_ICONS.antistixia },
+      { label: 'Μετεγγραφές', path: '/meteggrafes', iconSrc: MENU_ICONS.meteggrafes },
+      { label: 'Μελλοντικές Καριέρες & Προσανατολισμός', path: '/prosanatolismos', iconSrc: MENU_ICONS.prosanatolismos },
+      { label: 'ΣΑΕΚ', path: '/saek', iconSrc: MENU_ICONS.saek },
+      {label : 'Πρόβα Μηχανογραφικού', path: '/mixanografiko', iconSrc: MENU_ICONS.mixanografiko},
+    ],
   },
 ];
 
@@ -112,7 +136,7 @@ const faqData: FaqItem[] = [
   {
     question: 'Είναι δωρεάν η πλατφόρμα;',
     answer:
-      "Ναι! Το technotesgr είναι εντελώς δωρεάν για όλους τους μαθητές της Γ' Λυκείου. Στόχος μας είναι να βοηθήσουμε όσο το δυνατόν περισσότερους μαθητές να προετοιμαστούν για τις Πανελλαδικές εξετάσεις. Μελλοντικά θα προστεθεί ένα merch site με σχολικά είδη για την υποστήριξη της πλατφόρμας. ",
+      "Ναι! Το technotesgr είναι εντελώς δωρεάν για όλους τους μαθητές της Γ' Λυκείου. Στόχος μας είναι να βοηθήσουμε όσο το δυνατόν περισσότερους μαθητές να προετοιμαστούν για τις Πανελλαδικές εξετάσεις.",
   },
   {
     question: 'Καλύπτει όλη την ύλη της Πληροφορικής;',
@@ -122,17 +146,17 @@ const faqData: FaqItem[] = [
   {
     question: 'Πώς μπορώ να παρακολουθήσω την πρόοδό μου;',
     answer:
-      'Μέσα από τα quiz και τα flashcards μπορείς να δεις τις απαντήσεις σου και να εντοπίσεις τα σημεία που χρειάζονται περισσότερη μελέτη. Κάθε quiz σου δίνει άμεσο feedback. Αν δυσκολεύεσαι πολύ με κάτι μπορείς να επικοινωνήσεις μαζί μας για επιπλέον βοήθεια!',
+      'Μέσα από τα quiz και τα flashcards μπορείς να δεις τις απαντήσεις σου και να εντοπίσεις τα σημεία που χρειάζονται περισσότερη μελέτη. Κάθε quiz σου δίνει άμεσο feedback.',
   },
   {
     question: 'Μπορώ να χρησιμοποιήσω την πλατφόρμα από το κινητό μου;',
     answer:
-      'Απολύτως! Η πλατφόρμα είναι πλήρως responsive και λειτουργεί άψογα σε κινητά, tablets και υπολογιστές. Μπορείς να μελετάς όπου και όποτε θέλεις!',
+      'Απολύτως! Η πλατφόρμα είναι πλήρως responsive και λειτουργεί άψογα σε κινητά, tablets και υπολογιστές.',
   },
   {
     question: 'Πόσο συχνά ενημερώνεται το περιεχόμενο;',
     answer:
-      'Ενημερώνουμε τακτικά το περιεχόμενο με νέα quiz, flashcards και βελτιωμένες σημειώσεις. Παρακολουθούμε επίσης τις τάσεις των Πανελλαδικών για να προσθέτουμε σχετικό υλικό.',
+      'Ενημερώνουμε τακτικά το περιεχόμενο με νέα quiz, flashcards και βελτιωμένες σημειώσεις.',
   },
   {
     question: 'Μπορώ να κάνω ερωτήσεις αν δυσκολευτώ;',
@@ -141,68 +165,30 @@ const faqData: FaqItem[] = [
   },
 ];
 
-// ---------- Motion Variants ----------
-const fadeInUp = {
-  initial: { opacity: 0, y: 40 },
-  animate: { opacity: 1, y: 0 },
-};
+// const BACKEND_URL = getBackendUrl();
 
-const fadeIn = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-};
+/** Κοραλί (ζεστό): κύριο `#ff8f8e`, accent `#ff6b7a`, hover `#e85563`, ανοιχτό `#ffb0a4`. */
 
-const stagger = {
-  animate: {
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1,
-    },
+/** Διεύθυνση: +1 = επόμενη κριτική (μπαίνει από δεξιά), -1 = προηγούμενη (από αριστερά). */
+const reviewCarouselVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 64 : -64,
+    opacity: 0,
+    scale: 0.97,
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
   },
+  exit: (direction: number) => ({
+    x: direction > 0 ? -64 : 64,
+    opacity: 0,
+    scale: 0.97,
+  }),
 };
 
 // ---------- Sub-Components ----------
-
-interface AnimatedImageBoxProps {
-  src: string;
-  alt: string;
-  delay: number;
-  rotation: number;
-  widthClass: string;
-}
-
-const AnimatedImageBox: React.FC<AnimatedImageBoxProps> = ({
-  src,
-  alt,
-  delay,
-  rotation,
-  widthClass,
-}) => (
-  <motion.div
-    className={`relative w-full h-auto bg-white/90 border-4 border-pink-500 rounded-lg overflow-hidden shadow-2xl ${widthClass} mx-auto cursor-pointer`}
-    style={{ boxShadow: '0 10px 30px rgba(236, 72, 153, 0.4)' }}
-    initial={{ opacity: 0, scale: 0.8, rotate: rotation + 10 }}
-    animate={{ opacity: 1, scale: 1, rotate: rotation }}
-    transition={{
-      type: 'spring',
-      stiffness: 80,
-      damping: 15,
-      delay: delay,
-    }}
-    whileHover={{
-      scale: 1.05,
-      rotate: 0,
-      boxShadow: '0 15px 40px rgba(236, 72, 153, 0.6)',
-    }}
-  >
-    <img
-      src={src}
-      alt={alt}
-      className="w-full h-full object-cover rounded-md"
-      style={{ filter: 'grayscale(0.1) brightness(1.05)' }}
-    />
-  </motion.div>
-);
 
 interface SectionProps {
   id: string;
@@ -210,7 +196,6 @@ interface SectionProps {
   subtitle?: string;
   className?: string;
   children: React.ReactNode;
-  withGradient?: boolean;
 }
 
 const Section: React.FC<SectionProps> = ({
@@ -219,122 +204,199 @@ const Section: React.FC<SectionProps> = ({
   subtitle,
   className = '',
   children,
-  withGradient = false,
 }) => (
-  <section id={id} className={`py-20 relative overflow-hidden ${className}`}>
-    {withGradient && (
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-pink-50/30 to-transparent dark:via-pink-900/10 pointer-events-none" />
-    )}
+  <section
+    id={id}
+    className={`py-20 relative overflow-hidden ${className}`}
+    style={{ contentVisibility: 'auto', containIntrinsicSize: 'auto 480px' }}
+  >
     <div className="container mx-auto px-6 relative z-10">
       {title && (
-        <motion.header
-          className="text-center mb-16"
-          initial="initial"
-          whileInView="animate"
-          viewport={{ once: true, amount: 0.3 }}
-          variants={stagger}
-        >
-          <motion.h2
-            className="text-4xl md:text-5xl font-black tracking-tight bg-gradient-to-r from-pink-600 via-rose-500 to-red-500 bg-clip-text text-transparent mb-4"
-            variants={fadeInUp}
-            transition={{ type: 'spring', stiffness: 100, damping: 20 }}
-          >
+        <header className="text-center mb-16">
+          <h2 className="text-4xl md:text-5xl font-black tracking-tight text-[#faf5ef] mb-4 drop-shadow-sm">
             {title}
-          </motion.h2>
+          </h2>
 
           {subtitle && (
-            <motion.p
-              className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto"
-              variants={fadeIn}
-              transition={{ duration: 0.6, delay: 0.2 }}
-            >
+            <p className="text-lg text-[#fffdfb] max-w-2xl mx-auto">
               {subtitle}
-            </motion.p>
+            </p>
           )}
-        </motion.header>
+        </header>
       )}
       {children}
     </div>
   </section>
 );
 
-interface FeatureCardProps extends Feature {
-  i: number;
+interface CategoryCardProps extends FeatureCategory {
+  onNavigate: (path: string) => void;
 }
 
-const FeatureCard: React.FC<FeatureCardProps> = ({ title, desc, icon, gradient, i }) => (
-  <motion.article
-    className="group relative bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl shadow-xl p-8 text-center transition-all duration-500 border border-pink-200/50 dark:border-gray-700/50 overflow-hidden"
-    aria-label={title}
-    initial={{ opacity: 0, y: 30, rotateX: -5 }}
-    whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
+const CategoryCard: React.FC<CategoryCardProps> = ({ title, desc, items, onNavigate }) => (
+  <motion.div
+    className="group relative bg-white dark:bg-[#3a2658] rounded-3xl shadow-xl p-8 sm:p-10 border border-[#f07f97]/35 dark:border-[#f07f97]/25 overflow-hidden"
+    initial={{ opacity: 0, y: 30 }}
+    whileInView={{ opacity: 1, y: 0 }}
     viewport={{ once: true, amount: 0.2 }}
-    transition={{
-      type: 'spring',
-      stiffness: 80,
-      damping: 20,
-      delay: i * 0.15,
-    }}
+    transition={{ duration: 0.6 }}
     whileHover={{
-      y: -10,
-      scale: 1.02,
-      boxShadow: '0 25px 50px -12px rgba(236, 72, 153, 0.4)',
+      y: -6,
+      boxShadow: '0 25px 50px -12px rgba(232, 86, 100, 0.26)',
       transition: { duration: 0.3 },
     }}
   >
-    <motion.div
-      className={`absolute inset-0 bg-gradient-to-br ${gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-500`}
-      initial={{ scale: 0.8, rotate: 45 }}
-      whileHover={{ scale: 1, rotate: 0 }}
-    />
-
-    <div
-      className={`absolute -inset-0.5 bg-gradient-to-r ${gradient} rounded-2xl blur opacity-0 group-hover:opacity-20 transition duration-500`}
-    />
+    <div className="absolute -inset-0.5 bg-[#f07f97] rounded-3xl blur opacity-0 group-hover:opacity-15 transition duration-500 pointer-events-none" />
 
     <div className="relative z-10">
-      <motion.div
-        className="text-6xl mb-6 inline-block text-pink-500 drop-shadow-lg"
-        whileHover={{
-          scale: 1.2,
-          rotate: [0, -10, 10, -10, 0],
-          transition: { duration: 0.5 },
-        }}
-      >
-        {icon}
-      </motion.div>
+      <h3 className="text-2xl sm:text-3xl font-black mb-3 text-[#f07f97]">{title}</h3>
+      <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-8">{desc}</p>
 
-      <motion.h3
-        className="text-2xl font-bold mb-3 text-gray-900 dark:text-white"
-        whileHover={{
-          scale: 1.05,
-          transition: { duration: 0.2 },
-        }}
-      >
-        {title}
-      </motion.h3>
-
-      <p className="text-gray-600 dark:text-gray-300 leading-relaxed">{desc}</p>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {items.map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => onNavigate(item.path)}
+            className="flex flex-col items-center gap-2 rounded-2xl border border-[#f07f97]/25 dark:border-white/10 bg-coral-wash/60 dark:bg-white/5 hover:bg-[#f07f97]/15 dark:hover:bg-[#f07f97]/15 hover:border-[#f07f97] px-3 py-4 text-center transition-colors"
+          >
+            <MenuIconImg src={item.iconSrc} className="w-10 h-10 sm:w-12 sm:h-12" loading="lazy" fetchPriority="low" />
+            <span className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-100 leading-tight">
+              {item.label}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
-  </motion.article>
+  </motion.div>
 );
+
+const HeroBackground: React.FC = () => {
+  const [isDark, setIsDark] = useState(() => getPreferredTheme() === 'dark');
+
+  useEffect(() => {
+    const sync = () => setIsDark(document.documentElement.classList.contains('dark'));
+    sync();
+    const obs = new MutationObserver(sync);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+
+  const src = isDark ? HERO_DARK_SRC : HERO_LIGHT_SRC;
+  const srcSet = isDark ? HERO_DARK_SRCSET : HERO_LIGHT_SRCSET;
+
+  return (
+    <div className="absolute inset-0 z-0 pointer-events-none" aria-hidden>
+      <img
+        key={isDark ? 'dark' : 'light'}
+        src={src}
+        srcSet={srcSet}
+        sizes="100vw"
+        width={1920}
+        height={1080}
+        alt=""
+        className="h-full min-h-[80vh] w-full object-cover object-center sm:min-h-screen"
+        decoding="async"
+        loading="eager"
+        fetchPriority="high"
+      />
+    </div>
+  );
+};
+
+interface VideoShowcaseCardProps {
+  src: string;
+  index: number;
+}
+
+const VideoShowcaseCard: React.FC<VideoShowcaseCardProps> = ({ src, index }) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [muted, setMuted] = useState(true);
+  const [shouldLoad, setShouldLoad] = useState(false);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          setShouldLoad(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: '200px 0px', threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+
+  const toggleSound = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = !video.muted;
+    setMuted(video.muted);
+  };
+
+  return (
+    <motion.div
+      ref={wrapRef}
+      className="relative group mx-auto w-full max-w-[300px]"
+      initial={{ opacity: 0, y: 30 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: 0.6, delay: index * 0.12 }}
+    >
+      {/* Pink frame */}
+      <div className="relative rounded-[1.75rem] border-[6px] border-[#f07f97] bg-black overflow-hidden shadow-2xl shadow-[#f07f97]/40 aspect-[9/16] transition-transform duration-500 ease-out group-hover:-translate-y-2 group-hover:scale-[1.03]">
+        <video
+          ref={videoRef}
+          src={shouldLoad ? src : undefined}
+          className="w-full h-full object-cover"
+          autoPlay={shouldLoad}
+          muted
+          loop
+          playsInline
+          preload="none"
+        />
+
+        {/* Top sheen for legibility */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-black/50 to-transparent" />
+
+        {/* Sound toggle */}
+        <button
+          type="button"
+          onClick={toggleSound}
+          aria-label={muted ? 'Ενεργοποίηση ήχου' : 'Σίγαση'}
+          className="absolute top-3 right-3 w-9 h-9 rounded-full bg-white/85 hover:bg-white text-[#e06d88] flex items-center justify-center shadow-md backdrop-blur-sm transition-colors z-10"
+        >
+          {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+        </button>
+
+        {/* Brand badge */}
+        <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex justify-center">
+          <span className="px-3 py-1 rounded-full bg-[#f07f97] text-white text-xs font-black shadow-lg tracking-wide">
+            technotesgr
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const REVIEW_STARS_IMG = '/images/home%20page/stars-removebg-preview.png';
 
 const StarRating: React.FC<{ value?: number }> = ({ value = 0 }) => {
   const clamped = Math.max(0, Math.min(5, Number(value) || 0));
   return (
-    <div className="flex justify-center gap-1" aria-label={`Βαθμολογία ${clamped} από 5`}>
+    <div className="flex justify-center gap-2 sm:gap-3" aria-label={`Βαθμολογία ${clamped} από 5`}>
       {Array.from({ length: 5 }).map((_, i) => (
         <motion.span
           key={i}
-          className={`text-3xl ${i < clamped ? 'text-yellow-400' : 'text-gray-300'}`}
+          className="inline-flex"
           aria-hidden="true"
           initial={{ scale: 0, rotate: -180, opacity: 0 }}
           animate={{ scale: 1, rotate: 0, opacity: 1 }}
-          whileHover={{
-            scale: 1.3,
-            rotate: 360,
-            transition: { duration: 0.4 },
-          }}
           transition={{
             type: 'spring',
             stiffness: 260,
@@ -342,10 +404,14 @@ const StarRating: React.FC<{ value?: number }> = ({ value = 0 }) => {
             delay: i * 0.08,
           }}
         >
-          ★
+          <OptimizedImg
+            src={REVIEW_STARS_IMG}
+            alt=""
+            loading="lazy"
+            className={`w-16 h-16 sm:w-20 sm:h-20 object-contain ${i < clamped ? 'opacity-100' : 'opacity-25 grayscale'}`}
+          />
         </motion.span>
       ))}
-      <span className="sr-only">{clamped}/5</span>
     </div>
   );
 };
@@ -359,7 +425,7 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer, index }) => {
 
   return (
     <motion.div
-      className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-200/50 dark:border-gray-700/50 overflow-hidden"
+      className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-xl rounded-2xl shadow-lg border border-gray-200/50 dark:border-white/15 overflow-hidden"
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.2 }}
@@ -368,9 +434,9 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer, index }) => {
       <motion.button
         onClick={() => setIsOpen(!isOpen)}
         className="w-full px-6 py-5 flex items-center justify-between text-left group"
-        whileHover={{ backgroundColor: 'rgba(236, 72, 153, 0.05)' }}
+        whileHover={{ backgroundColor: 'rgba(240, 127, 151, 0.1)' }}
       >
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white pr-8 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white pr-8 group-hover:text-[#f07f97] transition-colors">
           {question}
         </h3>
         <motion.div
@@ -379,7 +445,7 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer, index }) => {
           className="flex-shrink-0"
         >
           <svg
-            className="w-6 h-6 text-pink-600 dark:text-pink-400"
+            className="w-6 h-6 text-[#f07f97]"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -397,7 +463,7 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer, index }) => {
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <div className="px-6 pb-5 text-gray-600 dark:text-gray-300 leading-relaxed">
+            <div className="px-6 pt-3 pb-5 text-gray-600 dark:text-gray-300 leading-relaxed">
               {answer}
             </div>
           </motion.div>
@@ -407,65 +473,13 @@ const FAQItem: React.FC<FAQItemProps> = ({ question, answer, index }) => {
   );
 };
 
-const FloatingParticles: React.FC = () => {
-  const particles = Array.from({ length: 20 });
-
-  return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute w-2 h-2 bg-pink-400/30 rounded-full"
-          style={{
-            left: `${Math.random() * 100}%`,
-            top: `${Math.random() * 100}%`,
-            boxShadow: '0 0 5px #ff00a0',
-          }}
-          animate={{
-            y: [0, -100, 0],
-            x: [0, Math.random() * 50 - 25, 0],
-            opacity: [0, 1, 0],
-            scale: [0, 1.5, 0],
-          }}
-          transition={{
-            duration: 3 + Math.random() * 2,
-            repeat: Infinity,
-            delay: Math.random() * 2,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-    </div>
-  );
-};
-
 // ---------- Main Component ----------
 
 const HomePage: React.FC = () => {
-  const { user } = useAuth();
   const navigate = useNavigate();
 
-  // Scroll Progress
-  const { scrollYProgress } = useScroll();
-  const scaleX = useSpring(useTransform(scrollYProgress, [0, 1], [0, 1]), {
-    stiffness: 100,
-    damping: 30,
-  });
-
-  // Mouse tracking for potential parallax (currently setup listeners only)
-  const mouseX = useMotionValue(0);
-  const mouseY = useMotionValue(0);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseX.set(e.clientX);
-      mouseY.set(e.clientY);
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [mouseX, mouseY]);
-
-  // Contact form state
+  // Contact form state (προσωρινά απενεργοποιημένη η φόρμα)
+  /*
   const [contactForm, setContactForm] = useState<ContactFormState>({
     firstName: '',
     lastName: '',
@@ -477,6 +491,7 @@ const HomePage: React.FC = () => {
   const [contactSubmitting, setContactSubmitting] = useState(false);
   const [contactSuccess, setContactSuccess] = useState(false);
   const [contactError, setContactError] = useState('');
+  const [contactSuccessMessage, setContactSuccessMessage] = useState('');
 
   const firstId = useId();
   const lastId = useId();
@@ -484,21 +499,42 @@ const HomePage: React.FC = () => {
   const msgId = useId();
   const successId = useId();
   const errorId = useId();
+  */
 
+  const [reviewIndex, setReviewIndex] = useState(0);
+  const [reviewDirection, setReviewDirection] = useState(1);
+
+  const reviewCount = reviewsData.length;
+  const goNextReview = useCallback(() => {
+    setReviewDirection(1);
+    setReviewIndex((i) => (i + 1) % reviewCount);
+  }, [reviewCount]);
+  const goPrevReview = useCallback(() => {
+    setReviewDirection(-1);
+    setReviewIndex((i) => (i - 1 + reviewCount) % reviewCount);
+  }, [reviewCount]);
+
+  // (Take a breath moved to the top navbar in MainLayout)
+
+  /*
   const handleContactInputChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
       const { name, value } = e.target;
       setContactForm((prev) => ({ ...prev, [name]: value }));
+      if (contactError) setContactError('');
     },
-    []
+    [contactError]
   );
 
   const validate = useCallback((): string | null => {
     if (contactForm.website) return 'Spam detected.';
     if (!contactForm.firstName.trim() || !contactForm.email.trim() || !contactForm.message.trim())
       return 'Συμπλήρωσε όνομα, email και μήνυμα.';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactForm.email))
-      return 'Το email δεν φαίνεται έγκυρο.';
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(contactForm.email))
+      return 'Το email δεν φαίνεται έγκυρο. Παρακαλώ ελέγξτε τη μορφή (π.χ. user@example.com).';
+
     return null;
   }, [contactForm]);
 
@@ -515,11 +551,24 @@ const HomePage: React.FC = () => {
       setContactSubmitting(true);
 
       try {
-        // Here you would typically call your backend API or EmailJS
-        // For now, we simulate success
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
+        const data = await apiFetch<ContactResponse>(`${BACKEND_URL}/api/contact`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          timeoutMs: 10000,
+          retries: 1,
+          body: JSON.stringify({
+            firstName: contactForm.firstName.trim(),
+            lastName: contactForm.lastName.trim(),
+            email: contactForm.email.trim(),
+            message: contactForm.message.trim(),
+          }),
+        });
         setContactSuccess(true);
+        setContactSuccessMessage(
+          data?.email_sent
+            ? '✓ Το μήνυμά σου στάλθηκε και ενημερώθηκε η ομάδα μας με email.'
+            : '✓ Το μήνυμά σου καταχωρήθηκε επιτυχώς. Θα σου απαντήσουμε σύντομα.'
+        );
         setContactForm({
           firstName: '',
           lastName: '',
@@ -527,176 +576,154 @@ const HomePage: React.FC = () => {
           message: '',
           website: '',
         });
-        setTimeout(() => setContactSuccess(false), 5000);
+        setTimeout(() => {
+          setContactSuccess(false);
+          setContactSuccessMessage('');
+        }, 5000);
       } catch (err) {
         console.error('Error:', err);
-        setContactError('Κάτι πήγε στραβά. Προσπάθησε ξανά.');
+        const detail = err instanceof Error ? err.message : '';
+        setContactError(detail || 'Κάτι πήγε στραβά. Προσπάθησε ξανά.');
       } finally {
         setContactSubmitting(false);
       }
     },
     [contactForm, validate]
   );
+  */
 
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-pink-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 transition-colors duration-500">
-        {/* Progress Bar */}
-        <motion.div
-          className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 origin-left z-50 shadow-lg shadow-pink-500/50"
-          style={{ scaleX }}
-        />
-
+      <div className="min-h-screen transition-colors duration-500 bg-[#ff97b2] dark:bg-[#2d1c48]">
         {/* 🚀 HERO SECTION 🚀 */}
-        <section className="relative min-h-screen flex items-center justify-center overflow-hidden py-20 md:py-0">
-          <FloatingParticles />
-
-          {/* Animated gradient background */}
-          <motion.div
-            className="absolute inset-0 bg-gradient-to-br from-pink-100 via-rose-50 to-red-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900"
-            animate={{
-              background: [
-                'linear-gradient(to bottom right, #fce7f3, #ffe4e6, #fee2e2)',
-                'linear-gradient(to bottom right, #ffe4e6, #fee2e2, #fce7f3)',
-                'linear-gradient(to bottom right, #fee2e2, #fce7f3, #ffe4e6)',
-                'linear-gradient(to bottom right, #fce7f3, #ffe4e6, #fee2e2)',
-              ],
-            }}
-            transition={{
-              duration: 10,
-              repeat: Infinity,
-              ease: 'linear',
-            }}
-          />
-
-          <div className="container mx-auto px-6 relative z-10 text-center">
-            {/* Title Block */}
-            <motion.div
-              initial={{ opacity: 0, y: 50 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
+        <section className="relative w-full min-h-[80vh] sm:min-h-screen flex items-center justify-center overflow-hidden">
+          <HeroBackground />
+          <div className="container mx-auto px-4 sm:px-6 relative z-10 text-center py-16 sm:py-20">
+            <h1
+              className="text-5xl sm:text-6xl md:text-8xl lg:text-9xl font-black mb-4 sm:mb-6 text-[#f07f97] drop-shadow-lg leading-tight tracking-tight"
             >
-              <motion.h1
-                className="text-4xl md:text-7xl font-black mb-4 bg-gradient-to-r from-pink-600 via-rose-600 to-red-600 bg-clip-text text-transparent drop-shadow-lg"
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4, duration: 0.8 }}
-              >
-                Γράψε 100 στην Πληροφορική🎓
-              </motion.h1>
+              Technotes
+            </h1>
 
-              <motion.p
-                className="text-xl md:text-2xl text-gray-700 dark:text-gray-300 mb-12 max-w-3xl mx-auto leading-relaxed"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6, duration: 0.8 }}
-              >
-                Η <span className="font-bold text-pink-600">ιδανική πλατφόρμα</span> προετοιμασίας
-                για τις Πανελλήνιες.
-              </motion.p>
+            <p
+              className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-gray-700 dark:text-gray-200 mb-8 md:mb-12 max-w-3xl mx-auto leading-relaxed"
+            >
+              Η <span className="font-bold text-[#f07f97]">ιδανική πλατφόρμα</span> προετοιμασίας
+              για τις πανελλήνιες,εντελώς <span className="font-bold text-[#00000]"> ΔΩΡΕΑΝ!</span>
+            </p>
 
-              <button
-                className="inline-block px-8 py-4 bg-pink-600 hover:bg-pink-700 text-white font-semibold rounded-full shadow-lg hover:shadow-xl transition transform hover:-translate-y-1"
-                onClick={() => navigate(user ? '/quiz' : '/login')}
+            <div className="flex items-center justify-center">
+              <motion.button
+                className="relative inline-flex items-center gap-3 px-10 py-5 text-lg sm:text-xl bg-[#f07f97] hover:bg-[#e06d88] text-white font-extrabold rounded-full shadow-xl transition-colors transition-transform hover:-translate-y-1"
+                onClick={() => navigate('/quiz')}
+                whileTap={{ scale: 0.98 }}
               >
-                {user ? 'Συνέχισε την προετοιμασία' : 'Συνδέσου για να ξεκινήσεις'}
-              </button>
-            </motion.div>
-
-            {/* Image Grid Container */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-8 max-w-5xl mx-auto mt-16">
-              {heroImages.map((image, index) => (
-                <AnimatedImageBox
-                  key={index}
-                  src={image.src}
-                  alt={image.alt}
-                  delay={image.delay}
-                  rotation={image.rotation}
-                  widthClass={index % 2 === 0 ? 'h-48 md:h-64' : 'h-36 md:h-52'}
+                <span>Ξεκίνα την προετοιμασία</span>
+                <span
+                  className="absolute inset-0 rounded-full ring-2 ring-[#f07f97]/55 animate-pulse"
+                  aria-hidden="true"
                 />
-              ))}
-            </div>
-          </div>
+              </motion.button>
+            </div>          </div>
         </section>
+
+        {/* Take a breath relocated to navbar (MainLayout) */}
+
+        {/* Video Showcase Section */}
+        <Section id="videos">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-10 sm:gap-8 place-items-center">
+            {SHOWCASE_VIDEOS.map((src, idx) => (
+              <VideoShowcaseCard key={src} src={src} index={idx} />
+            ))}
+          </div>
+        </Section>
 
         {/* Features Section */}
         <Section
           id="features"
-          title="Τι προσφέρουμε;"
-          subtitle="Όλα όσα χρειάζεσαι για να πετύχεις στις Πανελλήνιες"
-          withGradient
+          title="Τι προσφέρουμε:"
+          
         >
-          <motion.div
-            className="grid grid-cols-1 md:grid-cols-3 gap-8 lg:gap-12"
-            variants={stagger}
-            initial="initial"
-            whileInView="animate"
-            viewport={{ once: true, amount: 0.2 }}
-          >
-            {featuresData.map((feat, idx) => (
-              <FeatureCard key={feat.title} {...feat} i={idx} />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 lg:gap-10 max-w-5xl mx-auto">
+            {featureCategoriesData.map((category) => (
+              <CategoryCard
+                key={category.title}
+                {...category}
+                onNavigate={(path) => {
+                  window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+                  navigate(path);
+                }}
+              />
             ))}
-          </motion.div>
+          </div>
         </Section>
 
         {/* Reviews Section */}
-        <Section
-          id="reviews"
-          title="Τι λένε οι μαθητές μας;"
-          className="bg-gradient-to-b from-transparent via-pink-50/50 to-transparent dark:via-purple-900/10"
-        >
-          <Suspense
-            fallback={
-              <div className="flex items-center justify-center py-20">
-                <motion.div
-                  className="w-16 h-16 border-4 border-pink-500 border-t-transparent rounded-full"
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                />
-              </div>
-            }
+        <Section id="reviews" title="Τι λένε οι μαθητές μας;">
+          <motion.div
+            className="max-w-2xl mx-auto px-2 sm:px-0"
+            initial={{ opacity: 0, y: 40 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
           >
-            <motion.div
-              className="max-w-5xl mx-auto space-y-8"
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-            >
-              {reviewsData.map((review, idx) => (
-                <motion.div
-                  key={idx}
-                  className="mb-8 p-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-xl rounded-2xl shadow-xl border border-gray-200/50 dark:border-gray-700/50"
-                  initial={{ opacity: 0, x: idx % 2 === 0 ? -50 : 50 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true, amount: 0.3 }}
-                  transition={{ delay: idx * 0.1, duration: 0.6 }}
-                  whileHover={{
-                    scale: 1.02,
-                    boxShadow: '0 20px 40px rgba(236, 72, 153, 0.2)',
-                    transition: { duration: 0.3 },
-                  }}
-                >
-                  <StarRating value={review.rating} />
-                  <p className="text-gray-700 dark:text-gray-300 mt-4 text-lg leading-relaxed italic">
-                    "{review.description}"
-                  </p>
-                  <p className="text-pink-600 dark:text-pink-400 font-bold mt-4 text-right">
-                    — {review.name}
-                  </p>
-                </motion.div>
-              ))}
-            </motion.div>
-          </Suspense>
+            <div className="relative pt-3 pb-1">
+              {/* «Δεύτερη κάρτα» πίσω για αίσθηση στοίβας */}
+              <div
+                className="pointer-events-none absolute left-3 right-3 top-5 bottom-0 rounded-3xl bg-white/70 dark:bg-[#2d1c48]/55 border border-[#f07f97]/20 dark:border-white/15 shadow-lg scale-[0.97] -z-10"
+                aria-hidden
+              />
+              <div className="relative min-h-[320px] sm:min-h-[290px] md:min-h-[250px]">
+                <AnimatePresence initial={false} custom={reviewDirection} mode="wait">
+                  <motion.div
+                    key={reviewIndex}
+                    custom={reviewDirection}
+                    variants={reviewCarouselVariants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+                    className="absolute inset-0 flex flex-col justify-center rounded-3xl border-2 border-[#f07f97]/35 dark:border-[#f07f97]/25 bg-white dark:bg-[#2d1c48] p-8 sm:p-10 shadow-[0_20px_50px_-12px_rgba(240,127,151,0.28),0_8px_24px_-8px_rgba(0,0,0,0.12)] dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.45)] ring-1 ring-black/5 dark:ring-white/10"
+                  >
+                    <div
+                      className="absolute top-0 left-6 right-6 h-1 rounded-full bg-gradient-to-r from-transparent via-[#f07f97] to-transparent opacity-80"
+                      aria-hidden
+                    />
+                    <StarRating value={reviewsData[reviewIndex].rating} />
+                    <p className="text-gray-700 dark:text-gray-200 mt-4 text-base sm:text-lg leading-relaxed italic">
+                      "{reviewsData[reviewIndex].description}"
+                    </p>
+                    <p className="text-[#f07f97] font-bold mt-4 mb-1 text-right">
+                      — {reviewsData[reviewIndex].name}
+                    </p>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
+            </div>
+
+            <div className="flex justify-center items-center gap-4 mt-10" aria-label="Πλοήγηση κριτικών">
+              <button
+                type="button"
+                onClick={goPrevReview}
+                aria-label="Προηγούμενη κριτική"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/70 bg-white/15 text-white shadow-sm transition hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+              >
+                <ChevronLeft className="h-6 w-6" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={goNextReview}
+                aria-label="Επόμενη κριτική"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-full border-2 border-white/70 bg-white/15 text-white shadow-sm transition hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+              >
+                <ChevronRight className="h-6 w-6" aria-hidden />
+              </button>
+            </div>
+          </motion.div>
         </Section>
 
         {/* FAQ Section */}
-        <Section
-          id="faq"
-          title="Συχνές Ερωτήσεις"
-          subtitle="Απαντήσεις στις πιο κοινές απορίες σου"
-          withGradient
-        >
+        <Section id="faq" title="Συχνές Ερωτήσεις">
           <div className="max-w-3xl mx-auto space-y-4">
             {faqData.map((faq, index) => (
               <FAQItem key={index} {...faq} index={index} />
@@ -704,178 +731,16 @@ const HomePage: React.FC = () => {
           </div>
         </Section>
 
-        {/* Contact Section */}
+        {/* Contact Section — προσωρινά απενεργοποιημένη
         <Section
           id="contact"
           title="Επικοινώνησε μαζί μας"
           subtitle="Έχεις απορίες ή προτάσεις; Στείλε μας μήνυμα!"
           withGradient
         >
-          <motion.form
-            onSubmit={handleContactSubmit}
-            className="max-w-2xl mx-auto bg-white/90 dark:bg-gray-800/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 md:p-12 border border-gray-200/50 dark:border-gray-700/50"
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.8 }}
-          >
-            {/* Honeypot */}
-            <input
-              type="text"
-              name="website"
-              value={contactForm.website}
-              onChange={handleContactInputChange}
-              tabIndex={-1}
-              autoComplete="off"
-              aria-hidden="true"
-              className="sr-only"
-            />
-
-            {/* Success Message */}
-            <AnimatePresence>
-              {contactSuccess && (
-                <motion.div
-                  id={successId}
-                  role="alert"
-                  className="mb-6 p-4 bg-green-100 dark:bg-green-900/30 border-l-4 border-green-500 rounded-lg"
-                  initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.9 }}
-                >
-                  <p className="text-green-700 dark:text-green-300 font-semibold">
-                    ✓ Το μήνυμά σου στάλθηκε επιτυχώς!
-                  </p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Error Message */}
-            <AnimatePresence>
-              {contactError && (
-                <motion.div
-                  id={errorId}
-                  role="alert"
-                  className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 border-l-4 border-red-500 rounded-lg"
-                  initial={{ opacity: 0, y: -20, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -20, scale: 0.9 }}
-                >
-                  <p className="text-red-700 dark:text-red-300 font-semibold">{contactError}</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              <div>
-                <label
-                  htmlFor={firstId}
-                  className="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
-                >
-                  Όνομα *
-                </label>
-                <motion.input
-                  id={firstId}
-                  name="firstName"
-                  value={contactForm.firstName}
-                  onChange={handleContactInputChange}
-                  required
-                  autoComplete="given-name"
-                  className="w-full rounded-xl border-2 border-pink-200 dark:border-gray-600 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all"
-                  placeholder="π.χ. Μαρία"
-                  whileFocus={{ scale: 1.02, borderColor: '#ec4899' }}
-                  transition={{ duration: 0.2 }}
-                />
-              </div>
-              <div>
-                <label
-                  htmlFor={lastId}
-                  className="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
-                >
-                  Επώνυμο
-                </label>
-                <motion.input
-                  id={lastId}
-                  name="lastName"
-                  value={contactForm.lastName}
-                  onChange={handleContactInputChange}
-                  autoComplete="family-name"
-                  className="w-full rounded-xl border-2 border-pink-200 dark:border-gray-600 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all"
-                  placeholder="π.χ. Παπαδοπούλου"
-                  whileFocus={{ scale: 1.02, borderColor: '#ec4899' }}
-                  transition={{ duration: 0.2 }}
-                />
-              </div>
-            </div>
-
-            <div className="mt-6">
-              <label
-                htmlFor={emailId}
-                className="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
-              >
-                Email *
-              </label>
-              <motion.input
-                id={emailId}
-                name="email"
-                type="email"
-                value={contactForm.email}
-                onChange={handleContactInputChange}
-                required
-                inputMode="email"
-                autoComplete="email"
-                className="w-full rounded-xl border-2 border-pink-200 dark:border-gray-600 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-all"
-                placeholder="name@example.com"
-                whileFocus={{ scale: 1.02, borderColor: '#ec4899' }}
-                transition={{ duration: 0.2 }}
-              />
-            </div>
-
-            <div className="mt-6">
-              <label
-                htmlFor={msgId}
-                className="block text-sm font-bold mb-2 text-gray-700 dark:text-gray-200"
-              >
-                Μήνυμα *
-              </label>
-              <motion.textarea
-                id={msgId}
-                name="message"
-                rows={6}
-                value={contactForm.message}
-                onChange={handleContactInputChange}
-                required
-                className="w-full rounded-xl border-2 border-pink-200 dark:border-gray-600 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-y transition-all"
-                placeholder="Γράψε εδώ την απορία/πρότασή σου…"
-                whileFocus={{ scale: 1.01, borderColor: '#ec4899' }}
-                transition={{ duration: 0.2 }}
-              />
-            </div>
-
-            <div className="mt-8 flex items-center gap-4">
-              <motion.button
-                type="submit"
-                disabled={contactSubmitting}
-                className="relative px-8 py-4 bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold rounded-full shadow-lg disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden group"
-                whileHover={{
-                  scale: 1.05,
-                  boxShadow: '0 20px 40px rgba(236, 72, 153, 0.4)',
-                }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <span className="relative z-10">
-                  {contactSubmitting ? 'Αποστολή… ⏳' : 'Αποστολή ✉️'}
-                </span>
-                <motion.div
-                  className="absolute inset-0 bg-gradient-to-r from-rose-500 to-red-500"
-                  initial={{ x: '-100%' }}
-                  whileHover={{ x: 0 }}
-                  transition={{ duration: 0.3 }}
-                />
-              </motion.button>
-              <p className="text-sm text-gray-500 dark:text-gray-400">* Υποχρεωτικά πεδία</p>
-            </div>
-          </motion.form>
+          ...
         </Section>
+        */}
       </div>
     </MotionConfig>
   );

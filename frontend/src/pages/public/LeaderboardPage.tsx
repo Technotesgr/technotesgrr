@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { Trophy, Medal, Award } from 'lucide-react';
+import { apiFetch } from '@/utils/apiClient';
+import { getBackendUrlCandidates } from '@/utils/backendUrl';
 
 interface LeaderboardEntry {
   nickname: string;
@@ -12,13 +14,29 @@ const LeaderboardPage: React.FC = () => {
 
   useEffect(() => {
     const fetchLeaderboard = async () => {
+      let lastError: unknown = null;
       try {
-        const response = await fetch('/api/leaderboard');
-        const data = await response.json();
-        setLeaderboard(data.leaderboard || []);
+        for (const base of getBackendUrlCandidates()) {
+          try {
+            const data = await apiFetch<{ leaderboard?: LeaderboardEntry[] }>(`${base}/api/leaderboard`, {
+              dedupeKey: `leaderboard:${base}`,
+              cacheKey: `leaderboard:${base}`,
+              cacheTtlMs: 30_000,
+              timeoutMs: 20_000,
+              retries: 1,
+            });
+            setLeaderboard(Array.isArray(data?.leaderboard) ? data.leaderboard : []);
+            return;
+          } catch (error) {
+            lastError = error;
+          }
+        }
       } catch (error) {
-        console.error('Error fetching leaderboard:', error);
+        lastError = error;
       } finally {
+        if (lastError) {
+          console.error('Error fetching leaderboard:', lastError);
+        }
         setLoading(false);
       }
     };
@@ -28,25 +46,25 @@ const LeaderboardPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-pink-50 py-8 flex items-center justify-center">
+      <div className="min-h-screen bg-pink-50 dark:bg-[#2d1c48] py-8 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-pink-500"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-pink-50 py-8">
+    <div className="min-h-screen bg-pink-50 dark:bg-[#2d1c48] py-8">
       <div className="container mx-auto px-6 max-w-4xl">
-        <h1 className="text-2xl sm:text-3xl font-bold text-center text-gray-800 mb-8">
+        <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-center text-gray-900 dark:text-[#faf5ef] mb-8">
           Leaderboard 🏆
         </h1>
-        <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8 border border-pink-100">
-          <h2 className="text-lg sm:text-2xl font-semibold mb-6 text-center text-gray-700">
+        <div className="bg-white dark:bg-[#3a2658] rounded-xl shadow-lg p-6 sm:p-8 border border-pink-100 dark:border-white/15">
+          <h2 className="text-lg sm:text-2xl font-semibold mb-6 text-center text-gray-700 dark:text-gray-200">
             Κορυφαίοι Παίκτες του Μήνα
           </h2>
 
           {leaderboard.length === 0 ? (
-            <p className="text-center text-gray-500 py-4">
+            <p className="text-center text-gray-500 dark:text-gray-400 py-4">
               Δεν υπάρχουν ακόμα συμμετοχές σε αυτό το leaderboard.
             </p>
           ) : (
@@ -74,7 +92,7 @@ const LeaderboardPage: React.FC = () => {
                   >
                     <div className="flex items-center space-x-4">
                       <div className="font-bold text-xl w-10 flex justify-center">{rankIcon}</div>
-                      <span className="font-bold text-base sm:text-lg text-gray-800">
+                      <span className="font-bold text-base sm:text-lg text-gray-800 dark:text-gray-100">
                         {entry.nickname}
                       </span>
                     </div>

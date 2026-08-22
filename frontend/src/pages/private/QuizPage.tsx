@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -14,11 +14,13 @@ import {
   BookOpen,
   Code,
   Terminal,
+  Info,
   LucideIcon,
 } from 'lucide-react';
 import QuizDialog from '@/components/private/QuizDialog';
-import { fetchAllQuizzes } from '@/utils/quizUtils';
-import { useAuth } from '@/contexts/AuthContext';
+import { fetchAllQuizzes, sortQuizzesByChapterOrder } from '@/utils/quizUtils';
+import { MENU_ICONS, MenuIconImg } from '@/data/menuIcons';
+import { useSyncedStorage } from '@/utils/useSyncedStorage';
 
 // --- Types & Interfaces ---
 
@@ -70,28 +72,22 @@ interface QuizStatus {
 
 // --- Constants ---
 
-const BRAND = 'rgb(236, 72, 153)'; // pink-600
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const BRAND_DARK = 'rgb(187, 12, 60)'; // A deeper red/pink for gradients
+const BRAND = 'rgb(255, 107, 122)'; // coral-accent
 
 // --- Component ---
 
 const QuizPage: React.FC = () => {
-  // 1. Auth Context
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { user } = useAuth();
-
   // --- QuizPage State ---
   const [isQuizDialogOpen, setIsQuizDialogOpen] = useState<boolean>(false);
   const [selectedQuiz, setSelectedQuiz] = useState<ProcessedQuiz | null>(null);
-  const [categoryAnswers, setCategoryAnswers] = useState<QuizProgress>({});
+  const [categoryAnswers, setCategoryAnswers] = useSyncedStorage<QuizProgress>('quizProgress', {});
 
   // --- QuizMenu State ---
   const [quizzes, setQuizzes] = useState<ProcessedQuiz[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState<string>('');
-  const [sortBy, setSortBy] = useState<'progress' | 'title' | 'recent' | 'default'>('progress');
+  const [sortBy, setSortBy] = useState<'progress' | 'title' | 'recent' | 'default'>('default');
   const [filterBy, setFilterBy] = useState<'all' | 'completed' | 'inProgress' | 'notStarted'>(
     'all'
   );
@@ -100,45 +96,60 @@ const QuizPage: React.FC = () => {
 
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  // Track mount status to avoid state updates on unmounted component
+  const isMountedRef = useRef(true);
+
+  const loadQuizzes = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const data = (await fetchAllQuizzes()) as QuizData[];
+
+      // categoryAnswers is already hydrated (localStorage synchronously, server async
+      // when logged in) by the useSyncedStorage hook — no need to read localStorage here.
+      const initialAnswers = categoryAnswers;
+
+      if (!isMountedRef.current) return;
+
+      const withProgress: ProcessedQuiz[] = (Array.isArray(data) ? data : []).map((quiz) => {
+        const quizAnswers = initialAnswers[quiz.id] || {};
+        const answered = Object.keys(quizAnswers).length;
+        const total = quiz?.questions?.length || 0;
+        const percent = total ? Math.round((answered / total) * 100) : 0;
+
+        // Calculate correct answers based on local progress
+        const correctAnswersCount = Object.entries(quizAnswers).filter(([qIdx, ansIdx]) => {
+          const questionIndex = parseInt(qIdx, 10);
+          return quiz.questions[questionIndex]?.answers?.[ansIdx]?.correct;
+        }).length;
+
+        return { ...quiz, answered, total, percent, correctAnswers: correctAnswersCount };
+      });
+
+      if (!isMountedRef.current) return;
+      setQuizzes(withProgress);
+    } catch (e) {
+      console.error('Error loading quizzes:', e);
+      if (!isMountedRef.current) return;
+      setError('Αποτυχία φόρτωσης κεφαλαίων. Δοκίμασε ξανά.');
+    } finally {
+      if (!isMountedRef.current) return;
+      setLoading(false);
+    }
+  }, []);
+
   // Initial setup & progress load
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
+    isMountedRef.current = true;
+    void loadQuizzes();
 
-      try {
-        const data = (await fetchAllQuizzes()) as QuizData[];
-
-        // Load progress from localStorage
-        const storedProgress = localStorage.getItem('quizProgress');
-        const initialAnswers: QuizProgress = storedProgress ? JSON.parse(storedProgress) : {};
-        setCategoryAnswers(initialAnswers);
-
-        const withProgress: ProcessedQuiz[] = (Array.isArray(data) ? data : []).map((quiz) => {
-          const quizAnswers = initialAnswers[quiz.id] || {};
-          const answered = Object.keys(quizAnswers).length;
-          const total = quiz?.questions?.length || 0;
-          const percent = total ? Math.round((answered / total) * 100) : 0;
-
-          // Calculate correct answers based on local progress
-          const correctAnswersCount = Object.entries(quizAnswers).filter(([qIdx, ansIdx]) => {
-            const questionIndex = parseInt(qIdx, 10);
-            return quiz.questions[questionIndex]?.answers?.[ansIdx]?.correct;
-          }).length;
-
-          return { ...quiz, answered, total, percent, correctAnswers: correctAnswersCount };
-        });
-
-        setQuizzes(withProgress);
-      } catch (e) {
-        console.error('Error loading quizzes:', e);
-        setError('Αποτυχία φόρτωσης κεφαλαίων. Δοκίμασε ξανά.');
-      } finally {
-        setLoading(false);
-      }
+    return () => {
+      isMountedRef.current = false;
     };
-    load();
-  }, []);
+  }, [loadQuizzes]);
 
   // Keyboard shortcut for search focus
   useEffect(() => {
@@ -157,17 +168,12 @@ const QuizPage: React.FC = () => {
     quizId: string,
     questionIdx: number,
     selectedIdx: number,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    isCorrect: boolean
+    _isCorrect: boolean
   ) => {
     setCategoryAnswers((prev) => {
       const prevQuiz = prev[quizId] ? { ...prev[quizId] } : {};
       prevQuiz[questionIdx] = selectedIdx;
-
-      const newAnswers = { ...prev, [quizId]: prevQuiz };
-      localStorage.setItem('quizProgress', JSON.stringify(newAnswers));
-
-      return newAnswers;
+      return { ...prev, [quizId]: prevQuiz };
     });
 
     // Update the specific quiz stats in the local state to reflect changes immediately
@@ -195,25 +201,22 @@ const QuizPage: React.FC = () => {
   };
 
   // Quiz Menu Handlers
-  const handleQuizCategorySelect = (quiz: ProcessedQuiz, startIdx: number = 0) => {
+  const handleQuizCategorySelect = (quiz: ProcessedQuiz, _startIdx = 0) => {
     setSelectedQuiz(quiz);
-    // Note: startIdx isn't strictly passed to QuizDialog in the original code via a prop,
-    // usually QuizDialog handles "resume" logic internally or via 'selectedAnswers' prop.
-    // If QuizDialog accepts a starting index, pass it there.
     setIsQuizDialogOpen(true);
   };
 
   const handleQuizDialogClose = () => {
     setIsQuizDialogOpen(false);
-    // Re-trigger a soft reload of quiz stats based on new local storage if needed
-    // For now, relying on handleQuestionAnswered updates or a page refresh.
-    // To properly refresh computed stats:
-    const storedProgress = localStorage.getItem('quizProgress');
-    const currentAnswers: QuizProgress = storedProgress ? JSON.parse(storedProgress) : {};
+  };
 
+  // Keeps per-quiz stats (answered/percent/correctAnswers) in sync with categoryAnswers —
+  // covers both local answer updates and the async server-hydration from useSyncedStorage.
+  useEffect(() => {
+    if (quizzes.length === 0) return;
     setQuizzes((prev) =>
       prev.map((quiz) => {
-        const quizAnswers = currentAnswers[quiz.id] || {};
+        const quizAnswers = categoryAnswers[quiz.id] || {};
         const answered = Object.keys(quizAnswers).length;
         const total = quiz.questions.length;
         const percent = total ? Math.round((answered / total) * 100) : 0;
@@ -224,7 +227,8 @@ const QuizPage: React.FC = () => {
         return { ...quiz, answered, total, percent, correctAnswers: correctAnswersCount };
       })
     );
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryAnswers]);
 
   // Filter and sort quizzes
   const processedQuizzes = useMemo(() => {
@@ -251,7 +255,9 @@ const QuizPage: React.FC = () => {
     }
 
     // Sort
-    if (sortBy === 'progress') {
+    if (sortBy === 'default') {
+      result = sortQuizzesByChapterOrder(result);
+    } else if (sortBy === 'progress') {
       result.sort((a, b) => b.percent - a.percent);
     } else if (sortBy === 'title') {
       result.sort((a, b) => a.title.localeCompare(b.title, 'el'));
@@ -319,10 +325,8 @@ const QuizPage: React.FC = () => {
       setCategoryAnswers((prev) => {
         const newAnswers = { ...prev };
         delete newAnswers[quiz.id];
-        localStorage.setItem('quizProgress', JSON.stringify(newAnswers));
         return newAnswers;
       });
-      // Force refresh of quizzes state to reflect reset
       setQuizzes((prev) =>
         prev.map((q) =>
           q.id === quiz.id ? { ...q, percent: 0, answered: 0, correctAnswers: 0 } : q
@@ -331,12 +335,33 @@ const QuizPage: React.FC = () => {
     }
   };
 
+  const restartAllQuizzes = () => {
+    if (stats.answeredQuestions === 0) {
+      window.alert('Δεν έχεις καμία απάντηση ακόμα — δεν υπάρχει κάτι προς επαναφορά.');
+      return;
+    }
+    if (
+      !window.confirm(
+        'Θέλεις να επαναφέρεις όλα τα κουίζ; Θα χαθεί η πρόοδός σου σε όλα τα κεφάλαια ταυτόχρονα.'
+      )
+    ) {
+      return;
+    }
+
+    setCategoryAnswers({});
+    setIsQuizDialogOpen(false);
+    setSelectedQuiz(null);
+    setQuizzes((prev) =>
+      prev.map((quiz) => ({ ...quiz, percent: 0, answered: 0, correctAnswers: 0 }))
+    );
+  };
+
   // Background Component
   const TechBackgroundPattern = useMemo(
     () => (
-      <div className="absolute inset-0 bg-gradient-to-br from-pink-50 via-white to-red-50 dark:from-gray-900 dark:via-gray-950 dark:to-gray-800 transition-colors duration-500">
+      <div className="absolute inset-0 bg-gradient-to-br from-coral-wash via-white to-[#ffe8e5] dark:from-[#2d1c48] dark:via-[#2d1c48] dark:to-[#1a1028] transition-colors duration-500">
         {/* Binary Code Pattern */}
-        <div className="absolute inset-0 opacity-5 dark:opacity-5 font-mono text-xs overflow-hidden text-pink-300 dark:text-purple-400/50">
+        <div className="absolute inset-0 opacity-5 dark:opacity-5 font-mono text-xs overflow-hidden text-coral-accent/40 dark:text-purple-400/50">
           {Array.from({ length: 25 }).map((_, i) => (
             <motion.div
               key={i}
@@ -357,7 +382,7 @@ const QuizPage: React.FC = () => {
         </div>
 
         {/* Floating Code Symbols */}
-        <div className="absolute inset-0 opacity-10 dark:opacity-10 text-pink-400 dark:text-rose-500/20">
+        <div className="absolute inset-0 opacity-10 dark:opacity-10 text-coral-accent/50 dark:text-rose-500/20">
           <div className="absolute top-10 left-10 text-6xl">
             <Code size={80} />
           </div>
@@ -371,29 +396,50 @@ const QuizPage: React.FC = () => {
         </div>
 
         {/* Gradient Overlay for soft edge */}
-        <div className="absolute inset-0 bg-gradient-to-t from-white/50 dark:from-gray-900/50 to-transparent pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-t from-white/50 dark:from-[#2d1c48]/50 to-transparent pointer-events-none" />
       </div>
     ),
     []
   );
 
   return (
-    <div className="min-h-screen relative">
+    <div className="relative min-h-[calc(100dvh-5rem)]">
       {TechBackgroundPattern}
 
       {/* Main Content Area */}
-      <div className="relative z-20 flex flex-col min-h-screen">
+      <div className="relative z-20 flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 z-30 bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white p-6 shadow-xl dark:shadow-pink-900/50">
+        <div className="sticky top-0 z-30 border-b border-[#f07f97]/30 dark:border-white/10 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-xl text-gray-900 dark:text-gray-100 p-6 shadow-sm">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}>
-                <h3 className="text-2xl md:text-3xl font-black mb-1">📚 Επιλογή Κεφαλαίου</h3>
-                <p className="text-white/90 text-sm">
+            <div className="flex items-center justify-between gap-4 mb-4">
+              <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center gap-3">
+                <MenuIconImg src={MENU_ICONS.quiz} className="w-10 h-10 sm:w-12 sm:h-12 shrink-0" alt="Εικονίδιο quiz Πληροφορικής" />
+                <div>
+                <h1 className="text-2xl md:text-3xl font-black mb-1 text-gray-900 dark:text-[#faf5ef] tracking-tight">Επιλογή Κεφαλαίου</h1>
+                <p className="text-gray-600 dark:text-gray-300 text-sm">
                   {quizzes.length} διαθέσιμα κεφάλαια • {stats.answeredQuestions} συνολικές
                   απαντήσεις
                 </p>
+                </div>
               </motion.div>
+
+              {!loading && quizzes.length > 0 && (
+                <motion.button
+                  onClick={restartAllQuizzes}
+                  className={`shrink-0 px-3 sm:px-4 py-2.5 rounded-xl backdrop-blur-sm font-semibold flex items-center gap-2 transition-colors border ${
+                    stats.answeredQuestions > 0
+                      ? 'bg-[#f07f97]/10 hover:bg-[#f07f97]/20 dark:bg-white/10 dark:hover:bg-white/15 text-[#f07f97] dark:text-[#ff97b2] border-[#f07f97]/30 dark:border-white/15'
+                      : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-gray-500 border-gray-200 dark:border-white/10'
+                  }`}
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  title="Επαναφορά όλων των κουίζ"
+                  aria-label="Επαναφορά όλων των κουίζ"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span className="text-xs sm:text-sm">Επαναφορά όλων</span>
+                </motion.button>
+              )}
             </div>
 
             {/* Stats Bar */}
@@ -413,12 +459,12 @@ const QuizPage: React.FC = () => {
                 ].map((item, idx) => {
                   const Icon = item.icon;
                   return (
-                    <div key={idx} className="bg-white/20 backdrop-blur-sm rounded-xl p-3">
-                      <div className="flex items-center justify-center gap-2 mb-1">
+                    <div key={idx} className="bg-[#f07f97]/10 dark:bg-white/10 rounded-xl p-3">
+                      <div className="flex items-center justify-center gap-2 mb-1 text-gray-700 dark:text-gray-200">
                         <Icon className="w-4 h-4" />
-                        <span className="text-xs font-medium opacity-90">{item.label}</span>
+                        <span className="text-xs font-medium">{item.label}</span>
                       </div>
-                      <div className="text-xl font-black">{item.value}</div>
+                      <div className="text-xl font-black text-gray-900 dark:text-white">{item.value}</div>
                     </div>
                   );
                 })}
@@ -433,7 +479,7 @@ const QuizPage: React.FC = () => {
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Αναζήτηση... (πάτα / για εστίαση)"
-                  className="w-full rounded-xl px-4 py-3 pl-11 pr-10 text-gray-800 outline-none focus:ring-2 focus:ring-white/50 transition-all"
+                  className="w-full rounded-xl px-4 py-3 pl-11 pr-10 bg-white dark:bg-[#2d1c48] border border-[#f07f97]/25 dark:border-white/15 text-gray-800 dark:text-white outline-none focus:ring-2 focus:ring-[#f07f97]/40 focus:border-[#f07f97] shadow-inner transition-all"
                   aria-label="Αναζήτηση κεφαλαίων"
                 />
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -458,7 +504,7 @@ const QuizPage: React.FC = () => {
                     setShowSortMenu(!showSortMenu);
                     setShowFilterMenu(false);
                   }}
-                  className="px-4 py-3 rounded-xl bg-white/90 hover:bg-white text-gray-800 font-semibold flex items-center gap-2 transition-colors"
+                  className="px-4 py-3 rounded-xl bg-[#fff5f8] dark:bg-white/10 hover:bg-[#f07f97]/10 dark:hover:bg-white/15 border border-[#f07f97]/25 dark:border-white/15 text-gray-800 dark:text-gray-100 font-semibold flex items-center gap-2 transition-colors"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label="Ταξινόμηση"
@@ -470,16 +516,16 @@ const QuizPage: React.FC = () => {
                 <AnimatePresence>
                   {showSortMenu && (
                     <motion.div
-                      className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border-2 border-pink-200 overflow-hidden z-20 min-w-[200px]"
+                      className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border-2 border-coral-accent/25 overflow-hidden z-20 min-w-[200px]"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                     >
                       {[
+                        { value: 'default', label: 'Σειρά βιβλίου' },
                         { value: 'progress', label: 'Πρόοδος' },
                         { value: 'title', label: 'Αλφαβητικά' },
                         { value: 'recent', label: 'Πρόσφατα' },
-                        { value: 'default', label: 'Προεπιλογή' },
                       ].map((option) => (
                         <button
                           key={option.value}
@@ -487,9 +533,9 @@ const QuizPage: React.FC = () => {
                             setSortBy(option.value as 'progress' | 'title' | 'recent' | 'default');
                             setShowSortMenu(false);
                           }}
-                          className={`w-full px-4 py-3 text-left hover:bg-pink-50 transition-colors ${
+                          className={`w-full px-4 py-3 text-left hover:bg-coral-wash transition-colors ${
                             sortBy === option.value
-                              ? 'bg-pink-100 text-pink-700 font-bold'
+                              ? 'bg-coral-wash text-coral-strong font-bold'
                               : 'text-gray-700'
                           }`}
                         >
@@ -508,7 +554,7 @@ const QuizPage: React.FC = () => {
                     setShowFilterMenu(!showFilterMenu);
                     setShowSortMenu(false);
                   }}
-                  className="px-4 py-3 rounded-xl bg-white/90 hover:bg-white text-gray-800 font-semibold flex items-center gap-2 transition-colors"
+                  className="px-4 py-3 rounded-xl bg-[#fff5f8] dark:bg-white/10 hover:bg-[#f07f97]/10 dark:hover:bg-white/15 border border-[#f07f97]/25 dark:border-white/15 text-gray-800 dark:text-gray-100 font-semibold flex items-center gap-2 transition-colors"
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   aria-label="Φίλτρα"
@@ -521,7 +567,7 @@ const QuizPage: React.FC = () => {
                 <AnimatePresence>
                   {showFilterMenu && (
                     <motion.div
-                      className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border-2 border-pink-200 overflow-hidden z-20 min-w-[200px]"
+                      className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border-2 border-coral-accent/25 overflow-hidden z-20 min-w-[200px]"
                       initial={{ opacity: 0, y: -10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
@@ -542,9 +588,9 @@ const QuizPage: React.FC = () => {
                               );
                               setShowFilterMenu(false);
                             }}
-                            className={`w-full px-4 py-3 text-left hover:bg-pink-50 transition-colors flex items-center gap-2 ${
+                            className={`w-full px-4 py-3 text-left hover:bg-coral-wash transition-colors flex items-center gap-2 ${
                               filterBy === option.value
-                                ? 'bg-pink-100 text-pink-700 font-bold'
+                                ? 'bg-coral-wash text-coral-strong font-bold'
                                 : 'text-gray-700'
                             }`}
                           >
@@ -562,7 +608,31 @@ const QuizPage: React.FC = () => {
         </div>
 
         {/* Content (Quiz Grid) */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-7xl mx-auto w-full">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-28 sm:pb-32 max-w-7xl mx-auto w-full">
+          <motion.div
+            className="mb-6 flex items-start gap-3 rounded-xl border border-[#f07f97]/30 bg-white/85 p-4 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-[#f07f97]/30 dark:bg-[#3a2658]/85 dark:text-gray-200"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-[#f07f97]" />
+            <p>
+              <span className="font-bold text-gray-900 dark:text-white">Note:</span> Οι ερωτήσεις
+              ΣΩΣΤΟ/ΛΑΘΟΣ προέρχονται από τις Πανελλήνιες 2000-2026, Κανονικές και
+              Επαναληπτικές, των Ημερήσιων Γενικών Λυκείων, καθώς και από τον καθηγητή Θάνο
+              Κιούση από τη γνωστή σελίδα{' '}
+              <a
+                href="https://kathigitis-aepp.gr/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-[#d94f6b] underline underline-offset-2 transition-colors hover:text-[#b83f58] dark:text-[#ff97b2] dark:hover:text-[#ffb7c8]"
+              >
+                Καθηγητής ΑΕΠΠ
+              </a>
+              . Τον ευχαριστούμε που μας παρέχει το υλικό του.
+            </p>
+          </motion.div>
+
           {error && (
             <motion.div
               className="bg-red-50 border-2 border-red-300 rounded-2xl p-6 text-center"
@@ -573,7 +643,7 @@ const QuizPage: React.FC = () => {
               <h3 className="text-xl font-bold text-red-800 mb-2">Σφάλμα</h3>
               <p className="text-red-600 mb-4">{error}</p>
               <button
-                onClick={() => window.location.reload()}
+                onClick={() => void loadQuizzes()}
                 className="px-6 py-2 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors"
               >
                 Δοκίμασε ξανά
@@ -589,7 +659,7 @@ const QuizPage: React.FC = () => {
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
               />
-              <p className="mt-4 text-gray-500 font-semibold">Φόρτωση κεφαλαίων...</p>
+              <p className="mt-4 text-gray-500 dark:text-gray-400 font-semibold">Φόρτωση κεφαλαίων...</p>
             </div>
           )}
 
@@ -600,10 +670,10 @@ const QuizPage: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
             >
               <div className="text-6xl mb-4">🔍</div>
-              <h3 className="text-2xl font-bold text-gray-800 mb-2">
+              <h3 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">
                 {q.trim() ? 'Δεν βρέθηκαν αποτελέσματα' : 'Δεν βρέθηκαν κεφάλαια'}
               </h3>
-              <p className="text-gray-600 mb-6">
+              <p className="text-gray-600 dark:text-gray-300 mb-6">
                 {q.trim()
                   ? 'Δοκίμασε διαφορετική αναζήτηση'
                   : 'Κανένα κεφάλαιο διαθέσιμο αυτή τη στιγμή'}
@@ -614,7 +684,7 @@ const QuizPage: React.FC = () => {
                     setQ('');
                     setFilterBy('all');
                   }}
-                  className="px-6 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all"
+                  className="px-6 py-2 bg-coral-accent hover:bg-coral-strong text-white rounded-xl font-semibold hover:shadow-lg transition-all"
                 >
                   Καθαρισμός φίλτρων
                 </button>
@@ -632,7 +702,7 @@ const QuizPage: React.FC = () => {
                 return (
                   <motion.div
                     key={quiz.id}
-                    className="group relative p-6 rounded-2xl bg-white dark:bg-gray-700 border-2 border-pink-200 hover:border-pink-400 hover:shadow-2xl transition-all overflow-hidden cursor-pointer"
+                    className="group relative p-6 rounded-2xl bg-white dark:bg-[#3a2658] border-2 border-coral-accent/25 dark:border-[#f07f97]/30 hover:border-coral-accent dark:hover:border-[#f07f97] hover:shadow-2xl transition-all overflow-hidden cursor-pointer"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: Math.min(i * 0.05, 0.5) }}
@@ -640,9 +710,9 @@ const QuizPage: React.FC = () => {
                     onClick={() => continueQuiz(quiz)}
                   >
                     {/* Progress Bar */}
-                    <div className="absolute top-0 left-0 h-2 w-full bg-gray-200 dark:bg-gray-600 rounded-t-2xl overflow-hidden">
+                    <div className="absolute top-0 left-0 h-2 w-full bg-gray-200 dark:bg-[#2d1c48] rounded-t-2xl overflow-hidden">
                       <motion.div
-                        className="h-full bg-gradient-to-r from-pink-500 via-rose-500 to-red-500"
+                        className="h-full bg-coral-accent"
                         initial={{ width: 0 }}
                         animate={{ width: `${quiz.percent}%` }}
                         transition={{ duration: 1, delay: Math.min(i * 0.05 + 0.3, 0.8) }}
@@ -651,8 +721,8 @@ const QuizPage: React.FC = () => {
 
                     {/* Icon & Badge */}
                     <div className="flex items-center justify-between mb-4 mt-2">
-                      <div className="w-14 h-14 rounded-full flex items-center justify-center bg-gradient-to-br from-pink-100 to-rose-100 dark:from-pink-900/50 dark:to-rose-900/50 group-hover:from-pink-200 group-hover:to-rose-200 transition-all">
-                        <BookOpen className="w-7 h-7 text-pink-600 dark:text-pink-300" />
+                      <div className="w-14 h-14 rounded-full flex items-center justify-center bg-gradient-to-br from-coral-wash to-coral-light/40 dark:from-coral-accent/20 dark:to-coral-strong/20 group-hover:from-coral-light/50 group-hover:to-coral-accent/30 transition-all">
+                        <BookOpen className="w-7 h-7 text-coral-accent dark:text-coral-light" />
                       </div>
 
                       <motion.div
@@ -675,7 +745,7 @@ const QuizPage: React.FC = () => {
                     </div>
 
                     {/* Title */}
-                    <h4 className="font-bold text-lg text-gray-800 dark:text-white group-hover:text-pink-600 transition-colors mb-3 line-clamp-2 leading-tight">
+                    <h4 className="font-bold text-lg text-gray-800 dark:text-white group-hover:text-coral-accent transition-colors mb-3 line-clamp-2 leading-tight">
                       {quiz.title}
                     </h4>
 
@@ -714,7 +784,7 @@ const QuizPage: React.FC = () => {
                     {/* Action Buttons */}
                     <div className="flex gap-2 justify-between items-center pt-4 border-t border-gray-100 dark:border-gray-600">
                       <motion.button
-                        className="flex-1 py-2 px-4 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-shadow"
+                        className="flex-1 py-2 px-4 rounded-xl bg-coral-accent hover:bg-coral-strong text-white font-semibold flex items-center justify-center gap-2 hover:shadow-lg transition-shadow"
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
                       >
@@ -736,7 +806,7 @@ const QuizPage: React.FC = () => {
                     </div>
 
                     {/* Hover effect overlay */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-pink-500/0 to-rose-500/0 group-hover:from-pink-500/5 group-hover:to-rose-500/5 transition-all rounded-2xl pointer-events-none" />
+                    <div className="absolute inset-0 bg-coral-accent/0 group-hover:bg-coral-accent/8 transition-all rounded-2xl pointer-events-none" />
                   </motion.div>
                 );
               })}

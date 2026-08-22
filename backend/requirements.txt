@@ -1,6 +1,10 @@
 fastapi
+email-validator>=2.0.0
+google-genai>=1.0.0
 psycopg2_binary
 pydantic
 python-dotenv
 uvicorn
-supabase
+pypdf
+bcrypt>=4.1.0
+pyjwt>=2.8.0

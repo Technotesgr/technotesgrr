@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+﻿import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Lesson {
@@ -26,8 +26,8 @@ const LESSONS: Lesson[] = [
     description: 'Η έννοια του προβλήματος, Κατανόηση και Δομή προβλήματος, Καθορισμός Απαιτήσεων.',
     duration: '45 λεπτά',
     category: 'Θεωρητικά Μαθήματα',
-    thumbnail: '/images/1.jpg',
-    videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
+    thumbnail: '/images/m.png',
+    videoUrl: 'https://www.youtube.com/embed/Ht2-2PMPvcY?si=whQ8m8fFoQJbt21n',
     videoType: 'youtube',
     instructor: 'Ελένη Ζαφείρη',
     views: 1500,
@@ -41,13 +41,13 @@ const LESSONS: Lesson[] = [
       'Μεταβλητές, Σταθερές, Τύποι Δεδομένων, Εκφράσεις, Εντολή Εκχώρησης, Ενσωματωμένες Συναρτήσεις.',
     duration: '60 λεπτά',
     category: 'Βασικά για Αλγορίθμους',
-    thumbnail: '/images/2.jpg',
+    thumbnail: '/images/m2.png',
     videoUrl: 'https://www.youtube.com/embed/dQw4w9WgXcQ',
     videoType: 'youtube',
     instructor: 'Ελένη Ζαφείρη',
     views: 1024,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 3,
@@ -62,7 +62,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 756,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 4,
@@ -76,7 +76,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 1100,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 5,
@@ -90,7 +90,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 890,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 6,
@@ -104,7 +104,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 645,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 7,
@@ -118,7 +118,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 645,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 8,
@@ -132,7 +132,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 645,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
   {
     id: 9,
@@ -146,7 +146,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 645,
     level: 'Easy',
-    locked: false,
+    locked: true,
   },
 
   // ═══════════════════════════════════════════════════════════════
@@ -167,7 +167,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 543,
     level: 'Medium',
-    locked: false,
+    locked: true,
   },
   {
     id: 11,
@@ -182,7 +182,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 489,
     level: 'Medium',
-    locked: false,
+    locked: true,
   },
   {
     id: 12,
@@ -197,7 +197,7 @@ const LESSONS: Lesson[] = [
     instructor: 'Ελένη Ζαφείρη',
     views: 612,
     level: 'Medium',
-    locked: false,
+    locked: true,
   },
   {
     id: 13,
@@ -803,7 +803,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose }) => {
         onClick={onClose}
       >
         <motion.div
-          className="relative w-full max-w-4xl bg-gradient-to-br from-white to-pink-50 dark:from-gray-900 dark:to-gray-800 rounded-3xl shadow-2xl overflow-hidden"
+          className="relative w-full max-w-4xl bg-gradient-to-br from-white to-coral-wash dark:from-[#3a2658] dark:to-[#2d1c48] rounded-3xl shadow-2xl overflow-hidden"
           initial={{ scale: 0.9, y: 20 }}
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.9, y: 20 }}
@@ -830,7 +830,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose }) => {
             </svg>
           </button>
 
-          <div className="flex items-center justify-center  bg-gradient-to-br from-pink-200 via-white to-pink-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+          <div className="flex items-center justify-center bg-gradient-to-br from-coral-light/40 via-white to-coral-wash dark:from-[#2d1c48] dark:via-[#3a2658] dark:to-[#2d1c48]">
             {/* Content */}
             <div className="p-8 md:p-4 text-center">
               {/* Header */}
@@ -890,7 +890,7 @@ const VideoModal: React.FC<VideoModalProps> = ({ lesson, isOpen, onClose }) => {
         onClick={onClose}
       >
         <motion.div
-          className="relative w-full max-w-5xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl overflow-hidden"
+          className="relative w-full max-w-5xl bg-white dark:bg-[#3a2658] rounded-2xl shadow-2xl overflow-hidden"
           initial={{ scale: 0.9, y: 20 }}
           animate={{ scale: 1, y: 0 }}
           exit={{ scale: 0.9, y: 20 }}
@@ -931,7 +931,7 @@ const VideoModal: React.FC<VideoModalProps> = ({ lesson, isOpen, onClose }) => {
             )}
           </div>
 
-          <div className="p-6 bg-gradient-to-r from-pink-50 to-rose-50 dark:from-gray-800 dark:to-gray-800">
+          <div className="p-6 bg-gradient-to-r from-coral-wash to-coral-light/25 dark:from-gray-800 dark:to-gray-800">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
               {lesson.title}
             </h2>
@@ -961,7 +961,7 @@ const LessonCard: React.FC<LessonCardProps> = ({ lesson, onClick, index }) => {
 
   return (
     <motion.div
-      className="group relative bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer flex flex-col h-full"
+      className="group relative bg-white dark:bg-[#2d1c48] rounded-2xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 cursor-pointer flex flex-col h-full"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.1 }}
@@ -969,7 +969,7 @@ const LessonCard: React.FC<LessonCardProps> = ({ lesson, onClick, index }) => {
       onClick={onClick}
     >
       {/* Thumbnail */}
-      <div className="relative h-48 overflow-hidden bg-gradient-to-br from-pink-200 to-rose-200 flex-shrink-0">
+      <div className="relative h-48 overflow-hidden bg-gradient-to-br from-coral-light/50 to-coral-accent/40 flex-shrink-0">
         <motion.img
           src={lesson.thumbnail}
           alt={lesson.title}
@@ -1016,7 +1016,7 @@ const LessonCard: React.FC<LessonCardProps> = ({ lesson, onClick, index }) => {
             whileHover={{ opacity: 1 }}
           >
             <motion.div
-              className="w-16 h-16 rounded-full bg-pink-500 flex items-center justify-center shadow-xl"
+              className="w-16 h-16 rounded-full bg-coral-accent flex items-center justify-center shadow-xl"
               whileHover={{ scale: 1.2 }}
               whileTap={{ scale: 0.9 }}
             >
@@ -1030,11 +1030,11 @@ const LessonCard: React.FC<LessonCardProps> = ({ lesson, onClick, index }) => {
 
       {/* Content - grows to fill space */}
       <div className="p-5 flex flex-col flex-grow">
-        <div className="text-xs font-semibold text-pink-600 dark:text-pink-400 mb-2">
+        <div className="text-xs font-semibold text-coral-accent dark:text-coral-light mb-2">
           {lesson.category}
         </div>
 
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 group-hover:text-pink-600 dark:group-hover:text-pink-400 transition-colors">
+        <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 group-hover:text-coral-accent dark:group-hover:text-coral-light transition-colors">
           {lesson.title}
         </h3>
 
@@ -1042,9 +1042,9 @@ const LessonCard: React.FC<LessonCardProps> = ({ lesson, onClick, index }) => {
           {lesson.description}
         </p>
 
-        <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700 mt-auto">
+        <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-white/15 mt-auto">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-coral-accent flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
               {lesson.instructor.charAt(0)}
             </div>
             <span className="text-xs text-gray-600 dark:text-gray-400">{lesson.instructor}</span>
@@ -1115,9 +1115,9 @@ const OnlinePage: React.FC = () => {
   const lockedLessons = LESSONS.filter((l) => l.locked).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-red-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-coral-wash via-white to-coral-wash dark:from-[#2d1c48] dark:via-[#2d1c48] dark:to-[#1a1028]">
       {/* Header Section */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white py-16 px-6">
+      <div className="relative overflow-hidden bg-coral-accent text-white py-16 px-6">
         <div className="absolute inset-0 overflow-hidden opacity-20">
           <motion.div
             className="absolute -top-24 -left-24 w-96 h-96 bg-white rounded-full"
@@ -1141,7 +1141,7 @@ const OnlinePage: React.FC = () => {
             📚 Online Μαθήματα
           </motion.h1>
           <motion.p
-            className="text-xl md:text-2xl text-pink-100 mb-8"
+            className="text-xl md:text-2xl text-white/85 mb-8"
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
@@ -1159,22 +1159,22 @@ const OnlinePage: React.FC = () => {
           >
             <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-6 py-4">
               <div className="text-3xl font-black">{totalLessons}</div>
-              <div className="text-sm text-pink-100">Συνολικά Μαθήματα</div>
+              <div className="text-sm text-white/85">Συνολικά Μαθήματα</div>
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-6 py-4">
               <div className="text-3xl font-black">{unlockedLessons}</div>
-              <div className="text-sm text-pink-100">Δωρεάν 🎁</div>
+              <div className="text-sm text-white/85">Διαθέσιμα 🎁</div>
             </div>
             <div className="bg-white/20 backdrop-blur-sm rounded-2xl px-6 py-4">
               <div className="text-3xl font-black">{lockedLessons}</div>
-              <div className="text-sm text-pink-100">Coming soon 💎</div>
+              <div className="text-sm text-white/85">Coming soon 💎</div>
             </div>
           </motion.div>
         </div>
       </div>
 
       {/* Search & Filter Section */}
-      <div className="sticky top-0 z-40 bg-white/90 dark:bg-gray-900/90 backdrop-blur-lg shadow-lg border-b border-pink-200 dark:border-gray-700">
+      <div className="sticky top-0 z-40 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-lg shadow-lg border-b border-coral-accent/20 dark:border-white/15">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
@@ -1183,7 +1183,7 @@ const OnlinePage: React.FC = () => {
                 placeholder="Αναζήτηση μαθήματος..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full px-4 py-3 pl-12 rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none transition-all dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+                className="w-full px-4 py-3 pl-12 rounded-xl border-2 border-coral-accent/25 focus:border-coral-accent focus:ring-2 focus:ring-coral-accent/25 outline-none transition-all dark:bg-[#2d1c48] dark:border-white/15 dark:text-white"
               />
               <svg
                 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400"
@@ -1203,7 +1203,7 @@ const OnlinePage: React.FC = () => {
             <select
               value={selectedLevel}
               onChange={(e) => setSelectedLevel(e.target.value)}
-              className="px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none transition-all dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+              className="px-4 py-3 rounded-xl border-2 border-coral-accent/25 focus:border-coral-accent focus:ring-2 focus:ring-coral-accent/25 outline-none transition-all dark:bg-[#2d1c48] dark:border-white/15 dark:text-white"
             >
               {levels.map((level) => (
                 <option key={level} value={level}>
@@ -1215,7 +1215,7 @@ const OnlinePage: React.FC = () => {
             <select
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value)}
-              className="px-4 py-3 rounded-xl border-2 border-pink-200 focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none transition-all dark:bg-gray-800 dark:border-gray-600 dark:text-white"
+              className="px-4 py-3 rounded-xl border-2 border-coral-accent/25 focus:border-coral-accent focus:ring-2 focus:ring-coral-accent/25 outline-none transition-all dark:bg-[#2d1c48] dark:border-white/15 dark:text-white"
             >
               {categories.map((cat) => (
                 <option key={cat} value={cat}>
@@ -1226,7 +1226,7 @@ const OnlinePage: React.FC = () => {
           </div>
 
           <div className="mt-4 text-sm text-gray-600 dark:text-gray-400">
-            Βρέθηκαν <span className="font-bold text-pink-600">{filteredLessons.length}</span>{' '}
+            Βρέθηκαν <span className="font-bold text-coral-accent dark:text-coral-light">{filteredLessons.length}</span>{' '}
             μαθήματα
           </div>
         </div>

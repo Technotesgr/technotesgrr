@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, Search, Calendar, FileText, X } from 'lucide-react';
+import { Search, Calendar, X, FileText } from 'lucide-react';
 import Palia from '@/components/private/Palia';
+import { MENU_ICONS, MenuIconImg } from '@/data/menuIcons';
 
 /**
  * ═══════════════════════════════════════════════════════════════
@@ -13,23 +14,51 @@ import Palia from '@/components/private/Palia';
 // 🦕 TYPES & INTERFACES
 // ═══════════════════════════════════════════════════════════════
 
-type ExamMode = 'kanonikes' | 'epanaliptikes' | 'oefe-a' | 'oefe-b';
+type ExamMode =
+  | 'kanonikes'
+  | 'epanaliptikes'
+  | 'oefe-a'
+  | 'oefe-b'
+  | 'eimaste-mesa-a'
+  | 'eimaste-mesa-b'
+  | 'eimaste-mesa-c'
+  | 'trapeza-thema-b'
+  | 'trapeza-thema-d'
+  | 'diagonismata-akolouthia'
+  | 'diagonismata-epanalipsi'
+  | 'diagonismata-epilogi'
+  | 'diagonismata-efolis'
+  | 'diagonismata-pinakes';
 
-interface YearCardProps {
-  year: number;
+interface ExamItem {
+  id: string;
+  label: string;
+  /** Πλήρες μονοπάτι PDF όταν δεν ακολουθεί το πρότυπο `/pdfs/{mode}/{id}.pdf`. */
+  path?: string;
+}
+
+interface TopicCardProps {
+  item: ExamItem;
   mode: ExamMode;
   isSelected: boolean;
   onClick: () => void;
   index: number;
 }
 
+interface ModeTabConfig {
+  mode: ExamMode;
+  label: string;
+  mobileLabel: string;
+  count: number;
+}
+
 // ═══════════════════════════════════════════════════════════════
-// 📊 ΔΕΔΟΜΕΝΑ ΕΤΩΝ
+// 📊 ΔΕΔΟΜΕΝΑ
 // ═══════════════════════════════════════════════════════════════
 
 const KANONIKES_YEARS: number[] = [
   2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015,
-  2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025,
+  2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026,
 ];
 
 const EPANALIPTIKES_YEARS: number[] = [
@@ -38,81 +67,277 @@ const EPANALIPTIKES_YEARS: number[] = [
 ];
 
 const OEFE_YEARS2: number[] = [
-  2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015,
-  2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025,
+  2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013, 2014, 2015, 2016, 2017, 2018, 2019, 2020, 2021,
+  2022, 2023, 2024, 2025,2026
 ];
 
-const OEFE_YEARS1: number[] = [
-  2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025,
+const OEFE_YEARS1: number[] = [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025,2026];
+
+const EIMASTE_MESA_MONTHS: Record<string, string> = {
+  oct: 'Οκτώβριος',
+  jan: 'Ιανουάριος',
+  april: 'Απρίλιος',
+};
+
+const EIMASTE_MESA_A_IDS = ['oct25', 'oct24', 'oct23', 'oct22', 'oct21'];
+const EIMASTE_MESA_B_IDS = ['jan26', 'jan25', 'jan24', 'jan23', 'jan22', 'jan21', 'jan20'];
+const EIMASTE_MESA_C_IDS = ['april25', 'april24', 'april23', 'april22', 'april21', 'april20'];
+
+const yearsToItems = (years: number[]): ExamItem[] =>
+  years.map((year) => ({ id: year.toString(), label: year.toString() }));
+
+const KANONIKES_EXTRA_BY_YEAR: Record<string, ExamItem[]> = {
+  '2016': [
+    {
+      id: '2016_old',
+      label: '2016 old',
+      path: '/pdfs/kanonikes/palio_aepp_2016_panellinies_net.pdf',
+    },
+  ],
+  '2020': [
+    {
+      id: '2020_old',
+      label: '2020 old',
+      path: '/pdfs/kanonikes/old_aepp_2020_panellinies_net.pdf',
+    },
+  ],
+};
+
+const KANONIKES_ITEMS: ExamItem[] = yearsToItems(KANONIKES_YEARS).flatMap((item) =>
+  KANONIKES_EXTRA_BY_YEAR[item.id] ? [item, ...KANONIKES_EXTRA_BY_YEAR[item.id]] : [item],
+);
+
+const EPANALIPTIKES_EXTRA_BY_YEAR: Record<string, ExamItem[]> = {
+  '2016': [
+    {
+      id: '2016_palaio',
+      label: '2016 παλαιό',
+      path: '/pdfs/epanaliptikes/epanal_palio_aepp_2016_panellinies_net.pdf',
+    },
+  ],
+  '2020': [
+    {
+      id: '2020_palaio',
+      label: '2020 παλαιό',
+      path: '/pdfs/epanaliptikes/2020_old.pdf',
+    },
+  ],
+};
+
+const EPANALIPTIKES_ITEMS: ExamItem[] = yearsToItems(EPANALIPTIKES_YEARS).flatMap((item) =>
+  EPANALIPTIKES_EXTRA_BY_YEAR[item.id] ? [item, ...EPANALIPTIKES_EXTRA_BY_YEAR[item.id]] : [item],
+);
+
+const parseEimasteMesaId = (id: string): ExamItem => {
+  const match = id.match(/^([a-z]+)(\d{2})$/);
+  if (!match) return { id, label: id };
+  const [, month, yy] = match;
+  const monthLabel = EIMASTE_MESA_MONTHS[month] ?? month;
+  return { id, label: `${monthLabel} 20${yy}` };
+};
+
+const EIMASTE_MESA_A = EIMASTE_MESA_A_IDS.map(parseEimasteMesaId);
+const EIMASTE_MESA_B = EIMASTE_MESA_B_IDS.map(parseEimasteMesaId);
+const EIMASTE_MESA_C = EIMASTE_MESA_C_IDS.map(parseEimasteMesaId);
+
+const numberedTrapezaItems = (count: number): ExamItem[] =>
+  Array.from({ length: count }, (_, i) => {
+    const n = i + 1;
+    return { id: n.toString(), label: `Θέμα ${n}` };
+  });
+
+const TRAPEZA_THEMA_B = numberedTrapezaItems(75);
+const TRAPEZA_THEMA_D = numberedTrapezaItems(80);
+
+const DIAGONISMATA_BASE = '/pdfs/diagonismata';
+
+const numberedPdfFiles = (count: number): string[] =>
+  Array.from({ length: count }, (_, i) => `${i + 1}.pdf`);
+
+const filesToItems = (folder: string, files: string[]): ExamItem[] =>
+  files.map((file, index) => ({
+    id: `${folder}-${index}`,
+    label: `Διαγώνισμα ${index + 1}`,
+    path: `${DIAGONISMATA_BASE}/${folder}/${encodeURIComponent(file)}`,
+  }));
+
+const DIAGONISMATA_AKOLOUTHIA_FILES = numberedPdfFiles(5);
+const DIAGONISMATA_EPANALIPSI_FILES = numberedPdfFiles(26);
+const DIAGONISMATA_EPILOGI_FILES = numberedPdfFiles(1);
+const DIAGONISMATA_EFOLIS_FILES = numberedPdfFiles(34);
+const DIAGONISMATA_PINAKES_FILES = numberedPdfFiles(31);
+
+const DIAGONISMATA_AKOLOUTHIA = filesToItems('domi-ak', DIAGONISMATA_AKOLOUTHIA_FILES);
+const DIAGONISMATA_EPANALIPSI = filesToItems('domiep', DIAGONISMATA_EPANALIPSI_FILES);
+const DIAGONISMATA_EPILOGI = filesToItems('domiepil', DIAGONISMATA_EPILOGI_FILES);
+const DIAGONISMATA_EFOLIS = filesToItems('efolis', DIAGONISMATA_EFOLIS_FILES);
+const DIAGONISMATA_PINAKES = filesToItems('pinakes', DIAGONISMATA_PINAKES_FILES);
+
+const MODE_ITEMS: Record<ExamMode, ExamItem[]> = {
+  kanonikes: KANONIKES_ITEMS,
+  epanaliptikes: EPANALIPTIKES_ITEMS,
+  'oefe-a': yearsToItems(OEFE_YEARS1),
+  'oefe-b': yearsToItems(OEFE_YEARS2),
+  'eimaste-mesa-a': EIMASTE_MESA_A,
+  'eimaste-mesa-b': EIMASTE_MESA_B,
+  'eimaste-mesa-c': EIMASTE_MESA_C,
+  'trapeza-thema-b': TRAPEZA_THEMA_B,
+  'trapeza-thema-d': TRAPEZA_THEMA_D,
+  'diagonismata-akolouthia': DIAGONISMATA_AKOLOUTHIA,
+  'diagonismata-epanalipsi': DIAGONISMATA_EPANALIPSI,
+  'diagonismata-epilogi': DIAGONISMATA_EPILOGI,
+  'diagonismata-efolis': DIAGONISMATA_EFOLIS,
+  'diagonismata-pinakes': DIAGONISMATA_PINAKES,
+};
+
+const MODE_TABS: ModeTabConfig[] = [
+  { mode: 'kanonikes', label: 'Κανονικές', mobileLabel: 'Κανονικές', count: KANONIKES_ITEMS.length },
+  {
+    mode: 'epanaliptikes',
+    label: 'Επαναληπτικές',
+    mobileLabel: 'Επαναληπτικές',
+    count: EPANALIPTIKES_ITEMS.length,
+  },
+  { mode: 'oefe-a', label: 'ΟΕΦΕ Α Φάση', mobileLabel: 'ΟΕΦΕ Α', count: OEFE_YEARS1.length },
+  { mode: 'oefe-b', label: 'ΟΕΦΕ Β Φάση', mobileLabel: 'ΟΕΦΕ Β', count: OEFE_YEARS2.length },
+  {
+    mode: 'eimaste-mesa-a',
+    label: 'Είμαστε Μέσα · Α',
+    mobileLabel: 'Είμαστε Μέσα · Α',
+    count: EIMASTE_MESA_A.length,
+  },
+  {
+    mode: 'eimaste-mesa-b',
+    label: 'Είμαστε Μέσα · Β',
+    mobileLabel: 'Είμαστε Μέσα · Β',
+    count: EIMASTE_MESA_B.length,
+  },
+  {
+    mode: 'eimaste-mesa-c',
+    label: 'Είμαστε Μέσα · Γ',
+    mobileLabel: 'Είμαστε Μέσα · Γ',
+    count: EIMASTE_MESA_C.length,
+  },
+  {
+    mode: 'trapeza-thema-b',
+    label: 'Τράπεζα Θεμάτων · Β',
+    mobileLabel: 'Τράπεζα · Β',
+    count: TRAPEZA_THEMA_B.length,
+  },
+  {
+    mode: 'trapeza-thema-d',
+    label: 'Τράπεζα Θεμάτων · Δ',
+    mobileLabel: 'Τράπεζα · Δ',
+    count: TRAPEZA_THEMA_D.length,
+  },
+  // {
+  //   mode: 'diagonismata-akolouthia',
+  //   label: 'Διαγωνίσματα · Ακολουθία',
+  //   mobileLabel: 'Διαγων. Ακολουθία',
+  //   count: DIAGONISMATA_AKOLOUTHIA.length,
+  // },
+  // {
+  //   mode: 'diagonismata-epanalipsi',
+  //   label: 'Διαγωνίσματα · Επανάληψη',
+  //   mobileLabel: 'Διαγων. Επανάληψη',
+  //   count: DIAGONISMATA_EPANALIPSI.length,
+  // },
+  // {
+  //   mode: 'diagonismata-epilogi',
+  //   label: 'Διαγωνίσματα · Επιλογή',
+  //   mobileLabel: 'Διαγων. Επιλογή',
+  //   count: DIAGONISMATA_EPILOGI.length,
+  // },
+  // {
+  //   mode: 'diagonismata-efolis',
+  //   label: "Διαγωνίσματα · Εφ' Όλης",
+  //   mobileLabel: "Διαγων. Εφ' Όλης",
+  //   count: DIAGONISMATA_EFOLIS.length,
+  // },
+  // {
+  //   mode: 'diagonismata-pinakes',
+  //   label: 'Διαγωνίσματα · Πίνακες',
+  //   mobileLabel: 'Διαγων. Πίνακες',
+  //   count: DIAGONISMATA_PINAKES.length,
+  // },
 ];
 
+const YEAR_MODES: ExamMode[] = ['kanonikes', 'epanaliptikes', 'oefe-a', 'oefe-b'];
+// const DIAGONISMATA_MODES: ExamMode[] = [
+//   'diagonismata-akolouthia',
+//   'diagonismata-epanalipsi',
+//   'diagonismata-epilogi',
+//   'diagonismata-efolis',
+//   'diagonismata-pinakes',
+// ];
+const DIAGONISMATA_MODES: ExamMode[] = [];
 
+const getModeLabel = (currentMode: ExamMode): string => {
+  const tab = MODE_TABS.find((t) => t.mode === currentMode);
+  return tab?.label ?? '';
+};
 
 // ═══════════════════════════════════════════════════════════════
-// 🎴 YEAR CARD COMPONENT
+// 🎴 TOPIC CARD COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
-const YearCard: React.FC<YearCardProps> = ({ year, mode, isSelected, onClick, index }) => {
-  const getModeLabel = (currentMode: ExamMode): string => {
-    switch (currentMode) {
-      case 'kanonikes':
-        return 'Κανονικές';
-      case 'epanaliptikes':
-        return 'Επαναληπτικές';
-      case 'oefe-a':
-        return 'ΟΕΦΕ Ά ΦΑΣΗ';
-      case 'oefe-b':
-        return 'ΟΕΦΕ Β ΦΑΣΗ';
-      default:
-        return '';
-    }
-  };
+const TopicCard: React.FC<TopicCardProps> = ({ item, mode, isSelected, onClick, index }) => {
+  const staggerDelay = Math.min(index * 0.015, 0.2);
+  const isYearMode = YEAR_MODES.includes(mode);
+  const isDiagonismataMode = DIAGONISMATA_MODES.includes(mode);
 
   return (
     <motion.button
       className={`
-        relative group p-6 rounded-2xl font-bold text-lg
-        transition-all duration-300 shadow-lg
-        focus:outline-none focus:ring-2 focus:ring-pink-500 focus:ring-offset-2
+        relative group p-3 sm:p-5 md:p-6 rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg
+        transition-all duration-300 shadow-lg touch-manipulation min-h-[4.5rem] sm:min-h-0
+        focus:outline-none focus:ring-2 focus:ring-coral-accent focus:ring-offset-2
         ${
           isSelected
-            ? 'bg-gradient-to-br from-pink-500 to-rose-500 text-white scale-105 shadow-2xl'
-            : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-white hover:shadow-xl'
+            ? 'bg-coral-accent text-white sm:scale-105 shadow-2xl ring-2 ring-coral-light/60'
+            : 'bg-white dark:bg-[#2d1c48] text-gray-800 dark:text-white hover:shadow-xl active:scale-[0.98]'
         }
       `}
       onClick={onClick}
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.03 }}
-      whileHover={{ y: -4, scale: 1.05 }}
-      whileTap={{ scale: 0.98 }}
-      aria-label={`${getModeLabel(mode)} ${year}`}
+      transition={{ delay: staggerDelay, duration: 0.2 }}
+      whileHover={{ y: -2, scale: 1.02 }}
+      whileTap={{ scale: 0.97 }}
+      aria-label={`${getModeLabel(mode)} ${item.label}`}
+      title={isDiagonismataMode ? item.label : undefined}
     >
-      {/* Year Number */}
-      <div className="text-2xl font-black mb-2">{year}</div>
+      <div
+        className={`font-black mb-1 sm:mb-2 leading-tight ${
+          isYearMode
+            ? 'text-lg sm:text-2xl'
+            : isDiagonismataMode
+              ? 'text-xs sm:text-sm line-clamp-3 break-words'
+              : 'text-xs sm:text-base'
+        }`}
+      >
+        {item.label}
+      </div>
 
-      {/* Icon */}
       <div className="flex justify-center">
         <FileText
           className={`w-5 h-5 ${
-            isSelected ? 'text-white' : 'text-pink-500 group-hover:text-pink-600'
+            isSelected ? 'text-white' : 'text-coral-accent group-hover:text-coral-strong'
           }`}
         />
       </div>
 
-      {/* Hover gradient overlay */}
       {!isSelected && (
         <motion.div
-          className="absolute inset-0 rounded-2xl bg-gradient-to-br from-pink-500/10 to-rose-500/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          className="absolute inset-0 rounded-xl sm:rounded-2xl bg-coral-accent/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
           initial={{ opacity: 0 }}
           whileHover={{ opacity: 1 }}
         />
       )}
 
-      {/* Selected indicator */}
       {isSelected && (
         <motion.div
-          className="absolute -top-2 -right-2 bg-white text-pink-500 rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg"
+          className="absolute -top-2 -right-2 bg-white text-coral-accent rounded-full w-8 h-8 flex items-center justify-center font-bold shadow-lg"
           initial={{ scale: 0, rotate: -180 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: 'spring', stiffness: 500 }}
@@ -130,289 +355,168 @@ const YearCard: React.FC<YearCardProps> = ({ year, mode, isSelected, onClick, in
 
 const PaliathemataPage: React.FC = () => {
   const [mode, setMode] = useState<ExamMode>('kanonikes');
-  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
 
-  // ═══════════════════════════════════════════════════════════════
-  // 📊 DATA & FILTERING
-  // ═══════════════════════════════════════════════════════════════
+  const allItems = MODE_ITEMS[mode];
 
-  const allYears: number[] =
-    mode === 'kanonikes' ? KANONIKES_YEARS : mode === 'epanaliptikes' ? EPANALIPTIKES_YEARS : mode === 'oefe-a' ? OEFE_YEARS1 : mode === 'oefe-b' ? OEFE_YEARS2 : [];
-  const uniqueYears = Array.from(new Set(allYears)).sort((a, b) => b - a); // Reverse chronological
+  const filteredItems = useMemo(() => {
+    if (!searchQuery.trim()) return allItems;
+    const query = searchQuery.trim().toLowerCase();
+    return allItems.filter(
+      (item) => item.label.toLowerCase().includes(query) || item.id.toLowerCase().includes(query),
+    );
+  }, [allItems, searchQuery]);
 
-  // Filter years based on search
-  const filteredYears = useMemo(() => {
-    if (!searchQuery.trim()) return uniqueYears;
-    return uniqueYears.filter((year) => year.toString().includes(searchQuery.trim()));
-  }, [uniqueYears, searchQuery]);
+  const selectedItem = allItems.find((item) => item.id === selectedId) ?? null;
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🎬 HANDLERS
-  // ═══════════════════════════════════════════════════════════════
-
-  const handleYearClick = (year: number) => {
-    setSelectedYear(selectedYear === year ? null : year);
-    // Scroll to PDF viewer after selection
-    if (selectedYear !== year) {
-      setTimeout(() => {
-        document.getElementById('pdf-viewer')?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      }, 300);
-    }
+  const handleItemClick = (id: string) => {
+    setSelectedId(selectedId === id ? null : id);
   };
 
   const handleModeChange = (newMode: ExamMode) => {
     setMode(newMode);
-    setSelectedYear(null);
+    setSelectedId(null);
     setSearchQuery('');
-  };
-
-  const handleScrollTop = () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
   };
 
-  // Track scroll for "back to top" button
   useEffect(() => {
-    const handleScroll = () => {
-      setShowScrollTop(window.scrollY > 400);
+    if (selectedId == null) return;
+    let cancelled = false;
+    const raf1 = requestAnimationFrame(() => {
+      if (cancelled) return;
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        document.getElementById('pdf-viewer')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        });
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
     };
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, []);
+  }, [selectedId]);
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🎨 RENDER
-  // ═══════════════════════════════════════════════════════════════
+  const searchPlaceholder = mode.startsWith('eimaste-mesa')
+    ? 'Αναζήτηση περιόδου...'
+    : mode.startsWith('trapeza')
+      ? 'Αναζήτηση θέματος...'
+      : mode.startsWith('diagonismata')
+        ? 'Αναζήτηση διαγωνίσματος...'
+        : 'Αναζήτηση έτους...';
+
+  const resultsLabel = mode.startsWith('eimaste-mesa')
+    ? 'περίοδοι'
+    : mode.startsWith('trapeza')
+      ? 'θέματα'
+      : mode.startsWith('diagonismata')
+        ? 'διαγωνίσματα'
+        : 'χρονιές';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-red-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-900">
+    <div className="min-h-screen bg-gradient-to-br from-coral-wash via-white to-coral-wash dark:from-[#2d1c48] dark:via-[#2d1c48] dark:to-[#1a1028]">
       {/* Header Section */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-pink-500 via-rose-500 to-red-500 text-white py-16 px-6">
-        {/* Animated Background Circles */}
-        <div className="absolute inset-0 overflow-hidden opacity-20">
-          <motion.div
-            className="absolute -top-24 -left-24 w-96 h-96 bg-white rounded-full"
-            animate={{
-              scale: [1, 1.2, 1],
-              rotate: [0, 180, 360],
-            }}
-            transition={{
-              duration: 20,
-              repeat: Infinity,
-              ease: 'linear',
-            }}
-          />
-          <motion.div
-            className="absolute -bottom-24 -right-24 w-96 h-96 bg-white rounded-full"
-            animate={{
-              scale: [1.2, 1, 1.2],
-              rotate: [360, 180, 0],
-            }}
-            transition={{
-              duration: 25,
-              repeat: Infinity,
-              ease: 'linear',
-            }}
-          />
-        </div>
-
-        <div className="relative max-w-7xl mx-auto text-center">
+      <header className="border-b border-[#f07f97]/35 dark:border-white/10 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-md py-10 sm:py-12 px-4 sm:px-6">
+        <div className="relative max-w-4xl mx-auto text-center">
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <h1 className="text-5xl md:text-6xl font-black mb-4 flex items-center justify-center gap-3">
-              <FileText className="w-12 h-12" />
-              Παλιά Θέματα
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#ff97b2]/15 dark:bg-white/10 mb-3">
+              <MenuIconImg src={MENU_ICONS.paliathemata} className="w-9 h-9" />
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-[#faf5ef] tracking-tight">
+              Παλαιά Θέματα
             </h1>
-            <p className="text-xl md:text-2xl text-pink-100 mb-8">
-              Πανελλήνιες Πληροφορικής • Όλες οι Χρονιές
-            </p>
-          </motion.div>
-
-          {/* Stats */}
-          <motion.div
-            className="flex flex-wrap justify-center gap-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <div className="text-center">
-              <div className="text-4xl font-bold">{KANONIKES_YEARS.length}</div>
-              <div className="text-pink-100">Κανονικές Περίοδοι</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold">{EPANALIPTIKES_YEARS.length}</div>
-              <div className="text-pink-100">Επαναληπτικές Περίοδοι</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold">{OEFE_YEARS1.length}</div>
-              <div className="text-pink-100">ΟΕΦΕ Ά ΦΑΣΗ</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold">{OEFE_YEARS2.length}</div>
-              <div className="text-pink-100">ΟΕΦΕ ΄Β ΦΑΣΗ</div>
-            </div>
-            <div className="text-center">
-              <div className="text-4xl font-bold">
-                {KANONIKES_YEARS.length + EPANALIPTIKES_YEARS.length + OEFE_YEARS1.length + OEFE_YEARS2.length}
-              </div>
-              <div className="text-pink-100">Σύνολο Θεμάτων</div>
-            </div>
           </motion.div>
         </div>
-      </div>
+      </header>
 
       {/* Tabs & Search Section */}
-      <div className="sticky top-0 z-40 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg shadow-lg border-b border-pink-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          {/* Tabs */}
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-6">
-            {/* Mode Tabs Container */}
+      <div className="sticky top-0 z-40 bg-white/95 dark:bg-[#3a2658]/95 backdrop-blur-lg shadow-lg border-b border-coral-accent/20 dark:border-white/15 [overflow-anchor:none]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-5 sm:mb-6">
             <div
-              className="inline-flex items-center gap-2 bg-gray-100 dark:bg-gray-800 p-1.5 rounded-full shadow-inner relative"
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-5 gap-2 w-full"
               role="tablist"
               aria-label="Επιλογή κατηγορίας"
             >
-              <motion.button
-                role="tab"
-                aria-selected={mode === 'kanonikes'}
-                className={`
-                  relative px-6 py-3 rounded-full font-bold text-sm transition-all z-10 
-                  focus:outline-none focus:ring-2 focus:ring-pink-500
-                  ${
-                    mode === 'kanonikes'
-                      ? 'text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:text-pink-600 dark:hover:text-pink-400'
-                  }
-                `}
-                onClick={() => handleModeChange('kanonikes')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {mode === 'kanonikes' && (
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg"
-                    layoutId="activeTabIndicator"
-                    transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
-                  />
-                )}
-                <div className="relative z-20 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Κανονικές
-                  <span className="ml-1 text-xs opacity-75">({KANONIKES_YEARS.length})</span>
-                </div>
-              </motion.button>
-
-              <motion.button
-                role="tab"
-                aria-selected={mode === 'epanaliptikes'}
-                className={`
-                  relative px-6 py-3 rounded-full font-bold text-sm transition-all z-10 
-                  focus:outline-none focus:ring-2 focus:ring-pink-500
-                  ${
-                    mode === 'epanaliptikes'
-                      ? 'text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:text-pink-600 dark:hover:text-pink-400'
-                  }
-                `}
-                onClick={() => handleModeChange('epanaliptikes')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {mode === 'epanaliptikes' && (
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg"
-                    layoutId="activeTabIndicator"
-                    transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
-                  />
-                )}
-                <div className="relative z-20 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  Επαναληπτικές
-                  <span className="ml-1 text-xs opacity-75">({EPANALIPTIKES_YEARS.length})</span>
-                </div>
-              </motion.button>
-
-              <motion.button
-                role="tab"
-                aria-selected={mode === 'oefe-a'}
-                className={`
-                  relative px-6 py-3 rounded-full font-bold text-sm transition-all z-10 
-                  focus:outline-none focus:ring-2 focus:ring-pink-500
-                  ${
-                    mode === 'oefe-a'
-                      ? 'text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:text-pink-600 dark:hover:text-pink-400'
-                  }
-                `}
-                onClick={() => handleModeChange('oefe-a')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {mode === 'oefe-a' && (
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg"
-                    layoutId="activeTabIndicator"
-                    transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
-                  />
-                )}
-                <div className="relative z-20 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  ΟΕΦΕ Ά ΦΑΣΗ
-                  <span className="ml-1 text-xs opacity-75">({OEFE_YEARS1.length})</span>
-                </div>
-              </motion.button>
-
-
-               <motion.button
-                role="tab"
-                aria-selected={mode === 'oefe-b'}
-                className={`
-                  relative px-6 py-3 rounded-full font-bold text-sm transition-all z-10 
-                  focus:outline-none focus:ring-2 focus:ring-pink-500
-                  ${
-                    mode === 'oefe-b'
-                      ? 'text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:text-pink-600 dark:hover:text-pink-400'
-                  }
-                `}
-                onClick={() => handleModeChange('oefe-b')}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                {mode === 'oefe-b' && (
-                  <motion.div
-                    className="absolute inset-0 rounded-full bg-gradient-to-r from-pink-500 to-rose-500 shadow-lg"
-                    layoutId="activeTabIndicator"
-                    transition={{ type: 'spring', duration: 0.5, bounce: 0.2 }}
-                  />
-                )}
-                <div className="relative z-20 flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  ΟΕΦΕ Β' ΦΑΣΗ
-                  <span className="ml-1 text-xs opacity-75">({OEFE_YEARS2.length})</span>
-                </div>
-              </motion.button>
+              {MODE_TABS.map((tab) => (
+                <motion.button
+                  key={tab.mode}
+                  role="tab"
+                  aria-selected={mode === tab.mode}
+                  className={`
+                    relative px-3 sm:px-4 py-3 rounded-xl font-bold text-xs sm:text-sm transition-all
+                    focus:outline-none focus:ring-2 focus:ring-coral-accent
+                    ${
+                      mode === tab.mode
+                        ? 'bg-coral-accent text-white shadow-lg'
+                        : 'bg-gray-100 dark:bg-[#2d1c48] text-gray-700 dark:text-gray-300 hover:bg-coral-accent/10 dark:hover:bg-gray-700'
+                    }
+                  `}
+                  onClick={() => handleModeChange(tab.mode)}
+                  whileTap={{ scale: 0.97 }}
+                >
+                  <div className="flex flex-col items-center gap-1 leading-tight">
+                    <Calendar className="w-4 h-4 shrink-0" />
+                    {tab.mode.startsWith('eimaste-mesa') ? (
+                      <span className="sm:hidden text-center text-[10px] leading-snug">
+                        <span className="block">Είμαστε Μέσα</span>
+                        <span className="block">
+                          {tab.mode === 'eimaste-mesa-a'
+                            ? 'Α Φάση'
+                            : tab.mode === 'eimaste-mesa-b'
+                              ? 'Β Φάση'
+                              : 'Γ Φάση'}
+                        </span>
+                      </span>
+                    ) : tab.mode.startsWith('trapeza') ? (
+                      <span className="sm:hidden text-center text-[10px] leading-snug">
+                        <span className="block">Τράπεζα Θεμάτων</span>
+                        <span className="block">
+                          {tab.mode === 'trapeza-thema-b' ? 'Θέμα Β' : 'Θέμα Δ'}
+                        </span>
+                      </span>
+                    ) : /* tab.mode.startsWith('diagonismata') ? (
+                      <span className="sm:hidden text-center text-[10px] leading-snug">
+                        <span className="block">Διαγωνίσματα</span>
+                        <span className="block">
+                          {tab.mode === 'diagonismata-akolouthia'
+                            ? 'Ακολουθία'
+                            : tab.mode === 'diagonismata-epanalipsi'
+                              ? 'Επανάληψη'
+                              : tab.mode === 'diagonismata-epilogi'
+                                ? 'Επιλογή'
+                                : tab.mode === 'diagonismata-efolis'
+                                  ? "Εφ' Όλης"
+                                  : 'Πίνακες'}
+                        </span>
+                      </span>
+                    ) : */ (
+                      <span className="sm:hidden">{tab.mobileLabel}</span>
+                    )}
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="text-[10px] sm:text-xs opacity-75">({tab.count})</span>
+                  </div>
+                </motion.button>
+              ))}
             </div>
 
-            {/* Search Bar */}
-            <div className="relative w-full md:w-64">
+            <div className="relative w-full md:w-64 shrink-0">
               <input
                 type="text"
-                placeholder="Αναζήτηση έτους..."
+                placeholder={searchPlaceholder}
                 value={searchQuery}
                 onChange={handleSearchChange}
-                className="w-full px-4 py-3 pl-11 pr-10 rounded-xl border-2 border-pink-200 dark:border-gray-600 focus:border-pink-500 focus:ring-2 focus:ring-pink-200 outline-none transition-all bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                className="w-full px-4 py-3 pl-11 pr-10 rounded-xl border-2 border-coral-accent/25 dark:border-white/15 focus:border-coral-accent focus:ring-2 focus:ring-coral-accent/25 outline-none transition-all bg-white dark:bg-[#2d1c48] text-gray-900 dark:text-white"
               />
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               {searchQuery && (
@@ -427,26 +531,27 @@ const PaliathemataPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Results Info */}
-          <div className="flex items-center justify-between text-sm">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-sm">
             <div className="text-gray-600 dark:text-gray-400">
               Βρέθηκαν{' '}
-              <span className="font-bold text-pink-600 dark:text-pink-400">
-                {filteredYears.length}
+              <span className="font-bold text-coral-accent dark:text-coral-light">
+                {filteredItems.length}
               </span>{' '}
-              χρονιές
-              {selectedYear && (
+              {resultsLabel}
+              {selectedItem && (
                 <span className="ml-2">
                   • Επιλεγμένη:{' '}
-                  <span className="font-bold text-pink-600 dark:text-pink-400">{selectedYear}</span>
+                  <span className="font-bold text-coral-accent dark:text-coral-light">
+                    {selectedItem.label}
+                  </span>
                 </span>
               )}
             </div>
 
-            {selectedYear && (
+            {selectedId && (
               <motion.button
-                onClick={() => setSelectedYear(null)}
-                className="text-pink-600 hover:text-pink-700 dark:text-pink-400 dark:hover:text-pink-300 font-semibold flex items-center gap-1"
+                onClick={() => setSelectedId(null)}
+                className="text-coral-accent hover:text-coral-strong dark:text-coral-light dark:hover:text-coral-light font-semibold flex items-center gap-1"
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 whileHover={{ scale: 1.05 }}
@@ -459,10 +564,10 @@ const PaliathemataPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Years Grid Section */}
-      <div className="max-w-7xl mx-auto px-6 py-12">
+      {/* Topics Grid Section */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 py-6 sm:py-12">
         <AnimatePresence mode="wait">
-          {filteredYears.length === 0 ? (
+          {filteredItems.length === 0 ? (
             <motion.div
               className="text-center py-20"
               key={`${mode}-empty`}
@@ -472,7 +577,7 @@ const PaliathemataPage: React.FC = () => {
             >
               <div className="text-6xl mb-4">🔍</div>
               <h3 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">
-                Δεν βρέθηκαν χρονιές
+                Δεν βρέθηκαν αποτελέσματα
               </h3>
               <p className="text-gray-600 dark:text-gray-400 mb-4">
                 Δοκίμασε να αλλάξεις την αναζήτησή σου
@@ -480,7 +585,7 @@ const PaliathemataPage: React.FC = () => {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="px-6 py-3 bg-pink-500 text-white rounded-lg font-semibold hover:bg-pink-600 transition-colors"
+                  className="px-6 py-3 bg-coral-accent text-white rounded-lg font-semibold hover:bg-coral-strong transition-colors"
                 >
                   Καθαρισμός Αναζήτησης
                 </button>
@@ -488,20 +593,24 @@ const PaliathemataPage: React.FC = () => {
             </motion.div>
           ) : (
             <motion.div
-              className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7 gap-4"
+              className={
+                DIAGONISMATA_MODES.includes(mode)
+                  ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 sm:gap-4'
+                  : 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 sm:gap-4'
+              }
               key={`${mode}-grid`}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {filteredYears.map((year, index) => (
-                <YearCard
-                  key={`${mode}-${year}`}
-                  year={year}
+              {filteredItems.map((item, index) => (
+                <TopicCard
+                  key={`${mode}-${item.id}`}
+                  item={item}
                   mode={mode}
-                  isSelected={selectedYear === year}
-                  onClick={() => handleYearClick(year)}
+                  isSelected={selectedId === item.id}
+                  onClick={() => handleItemClick(item.id)}
                   index={index}
                 />
               ))}
@@ -512,41 +621,22 @@ const PaliathemataPage: React.FC = () => {
 
       {/* PDF Viewer Section */}
       <AnimatePresence>
-        {selectedYear && (
+        {selectedId && (
           <motion.div
             id="pdf-viewer"
-            className="max-w-7xl mx-auto px-6 pb-12"
+            className="max-w-7xl mx-auto px-3 sm:px-6 pb-8 sm:pb-12 scroll-mt-20 sm:scroll-mt-24"
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
           >
-            {/* PDF Component */}
-            <div className="bg-white dark:bg-gray-800 rounded-b-3xl shadow-2xl overflow-hidden">
+            <div className="bg-white dark:bg-[#2d1c48] rounded-b-3xl shadow-2xl overflow-hidden">
               <Palia
-                pdfPath={`/pdfs/${mode}/${selectedYear}.pdf`}
-                fileName={`${mode}-${selectedYear}.pdf`}
+                pdfPath={selectedItem?.path ?? `/pdfs/${mode}/${selectedId}.pdf`}
+                fileName={selectedItem?.path ? `${selectedItem.label}.pdf` : `${mode}-${selectedId}.pdf`}
               />
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Scroll to Top Button */}
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            onClick={handleScrollTop}
-            className="fixed bottom-6 right-6 z-50 p-4 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-full shadow-2xl hover:shadow-pink-500/50 transition-all group"
-            initial={{ opacity: 0, scale: 0 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0 }}
-            whileHover={{ scale: 1.1, y: -5 }}
-            whileTap={{ scale: 0.9 }}
-            aria-label="Μετάβαση στην κορυφή"
-          >
-            <ChevronUp className="w-6 h-6 group-hover:animate-bounce" />
-          </motion.button>
         )}
       </AnimatePresence>
     </div>

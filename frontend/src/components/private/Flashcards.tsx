@@ -1,25 +1,26 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-// @ts-ignore - Assuming types are not available for this library
-import { FlashcardArray } from 'react-quizlet-flashcard';
-import { ArrowLeft, BookOpen, Zap } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen,
+  Zap,
+  Shuffle,
+  RotateCcw,
+  CheckCircle,
+  AlertCircle,
+  BarChart3,
+  Target,
+  TrendingUp,
+  Filter,
+} from 'lucide-react';
+import { flashcards as staticFlashcardChapters } from '@/utils/flashcards';
+import { PageMenuIcon } from '@/data/menuIcons';
+import { useSyncedStorage } from '@/utils/useSyncedStorage';
+import { FlashcardText } from '@/utils/flashcardTextFormat';
 
 // --- Types & Interfaces ---
-
-interface RawFlashcard {
-  id: number;
-  category: string;
-  question: string;
-  answer: string;
-}
-
-interface BackendCategoriesResponse {
-  flashcard_categories: string[];
-}
-
-interface BackendFlashcardsResponse {
-  flashcards: RawFlashcard[];
-}
 
 interface FlashcardItem {
   id: number | string;
@@ -33,175 +34,443 @@ interface FlashcardSet {
   questions: FlashcardItem[];
 }
 
-// Updated interface to include style
-interface LibCard {
-  id: number;
-  frontHTML: React.ReactNode;
-  backHTML: React.ReactNode;
-  style?: React.CSSProperties;
+function buildStaticFlashcardSets(): FlashcardSet[] {
+  return staticFlashcardChapters.map((chapter) => ({
+    id: chapter.id,
+    title: chapter.title,
+    questions: chapter.questions.map((card) => ({
+      id: card.id,
+      front: String(card.front ?? ''),
+      back: String(card.back ?? ''),
+    })),
+  }));
+}
+
+interface CardProgress {
+  studied: boolean;
+  known: boolean;
+  difficult: boolean;
+  needReview: boolean;
+  lastStudied?: number;
+  timesStudied: number;
+  timesCorrect: number;
+}
+
+type StudyMode = 'all' | 'difficult' | 'review' | 'new';
+
+interface FlashcardProgress {
+  [setId: string]: {
+    [cardId: string]: CardProgress;
+  };
 }
 
 // --- Constants ---
 
-const BACKEND_URL = 'http://localhost:8001';
-const BRAND = '#fda8a9';
-// const BRAND_DARK = '#f88b8c';
+const STORAGE_KEY = 'flashcardProgress';
+const STATIC_FLASHCARD_SETS = buildStaticFlashcardSets();
 
 const Flashcards: React.FC = () => {
-  const [flashcardSets, setFlashcardSets] = useState<FlashcardSet[]>([]);
+  const [flashcardSets] = useState<FlashcardSet[]>(STATIC_FLASHCARD_SETS);
   const [selectedSetIndex, setSelectedSetIndex] = useState<number | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [studyMode, setStudyMode] = useState<StudyMode>('all');
+  const [shuffled, setShuffled] = useState<boolean>(false);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [slideDirection, setSlideDirection] = useState<1 | -1>(1);
 
-  useEffect(() => {
-    fetchFlashcardData();
-  }, []);
+  const cardBodyRef = useRef<HTMLButtonElement | null>(null);
+  const studySessionRef = useRef<{ cardsStudied: Set<string> }>({ cardsStudied: new Set() });
 
-  const fetchFlashcardData = async () => {
-    setLoading(true);
-    try {
-      // Fetch Categories
-      const categoriesResponse = await fetch(`${BACKEND_URL}/api/categories`);
-      if (!categoriesResponse.ok) throw new Error('Failed to fetch categories');
-      const categoriesData: BackendCategoriesResponse = await categoriesResponse.json();
+  // Πρόοδος: localStorage πάντα, plus συγχρονισμός με τον λογαριασμό όταν ο χρήστης είναι συνδεδεμένος.
+  const [progress, setProgress] = useSyncedStorage<FlashcardProgress>(STORAGE_KEY, {});
 
-      // Fetch Flashcards
-      const flashcardsResponse = await fetch(`${BACKEND_URL}/api/flashcards`);
-      if (!flashcardsResponse.ok) throw new Error('Failed to fetch flashcards');
-      const flashcardsData: BackendFlashcardsResponse = await flashcardsResponse.json();
+  // Get current set
+  const currentSet = useMemo(() => {
+    return selectedSetIndex !== null ? (flashcardSets[selectedSetIndex] ?? null) : null;
+  }, [selectedSetIndex, flashcardSets]);
 
-      const flashcards = flashcardsData.flashcards || [];
-      const categories = categoriesData.flashcard_categories || [];
+  // Get filtered cards based on study mode
+  const filteredCards = useMemo(() => {
+    if (!currentSet) return [];
 
-      // Group flashcards by category
-      const sets: FlashcardSet[] = categories.map((category) => {
-        const categoryCards = flashcards.filter((card) => card.category === category);
+    const setProgress = progress[currentSet.id] || {};
+    let cards = [...currentSet.questions];
+
+    // Apply study mode filter
+    if (studyMode === 'difficult') {
+      cards = cards.filter((card) => setProgress[String(card.id)]?.difficult);
+    } else if (studyMode === 'review') {
+      cards = cards.filter((card) => {
+        const cardProg = setProgress[String(card.id)];
+        return (
+          cardProg?.needReview ||
+          (cardProg?.lastStudied && Date.now() - cardProg.lastStudied > 7 * 24 * 60 * 60 * 1000)
+        ); // 7 days
+      });
+    } else if (studyMode === 'new') {
+      cards = cards.filter((card) => !setProgress[String(card.id)]?.studied);
+    }
+
+    // Shuffle if enabled
+    if (shuffled) {
+      const shuffledCards = [...cards];
+      for (let i = shuffledCards.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledCards[i], shuffledCards[j]] = [shuffledCards[j], shuffledCards[i]];
+      }
+      return shuffledCards;
+    }
+
+    return cards;
+  }, [currentSet, studyMode, shuffled, progress]);
+
+  const currentCard = useMemo(
+    () => filteredCards[currentCardIndex] ?? null,
+    [filteredCards, currentCardIndex]
+  );
+
+  const hasCards = filteredCards.length > 0;
+  const currentCardProgress = useMemo(() => {
+    if (!currentSet || !currentCard) return null;
+    return progress[currentSet.id]?.[String(currentCard.id)] || null;
+  }, [progress, currentSet, currentCard]);
+
+  // Update card progress
+  const updateCardProgress = useCallback(
+    (cardId: string | number, updates: Partial<CardProgress>) => {
+      if (!currentSet) return;
+
+      setProgress((prev) => {
+        const setId = currentSet.id;
+        const cardIdStr = String(cardId);
+        const current = prev[setId]?.[cardIdStr] || {
+          studied: false,
+          known: false,
+          difficult: false,
+          needReview: false,
+          timesStudied: 0,
+          timesCorrect: 0,
+        };
+
         return {
-          id: category.toLowerCase().replace(/\s+/g, '-'),
-          title: category,
-          questions: categoryCards.map((card) => ({
-            id: card.id,
-            front: card.question,
-            back: card.answer,
-          })),
+          ...prev,
+          [setId]: {
+            ...prev[setId],
+            [cardIdStr]: {
+              ...current,
+              ...updates,
+              studied: true,
+              lastStudied: Date.now(),
+              timesStudied: current.timesStudied + 1,
+            },
+          },
         };
       });
 
-      setFlashcardSets(sets);
-    } catch (err) {
-      console.error('Error fetching flashcard data:', err);
-    } finally {
-      setLoading(false);
+      // Track in session
+      studySessionRef.current.cardsStudied.add(String(cardId));
+    },
+    [currentSet]
+  );
+
+  // Mark card as known
+  const markAsKnown = useCallback(
+    (cardId: string | number) => {
+      updateCardProgress(cardId, {
+        known: true,
+        difficult: false,
+        needReview: false,
+        timesCorrect: (progress[currentSet?.id || '']?.[String(cardId)]?.timesCorrect || 0) + 1,
+      });
+    },
+    [updateCardProgress, progress, currentSet]
+  );
+
+  // Mark card as difficult
+  const markAsDifficult = useCallback(
+    (cardId: string | number) => {
+      updateCardProgress(cardId, { difficult: true, needReview: true, known: false });
+    },
+    [updateCardProgress]
+  );
+
+  // Mark card for review
+  const markForReview = useCallback(
+    (cardId: string | number) => {
+      updateCardProgress(cardId, { needReview: true });
+    },
+    [updateCardProgress]
+  );
+
+  // Reset progress for current set
+  const resetProgress = useCallback(() => {
+    if (!currentSet || !window.confirm('Θέλεις να επαναφέρεις την πρόοδο για αυτό το σετ;')) return;
+
+    setProgress((prev) => {
+      const newProgress = { ...prev };
+      delete newProgress[currentSet.id];
+      return newProgress;
+    });
+  }, [currentSet]);
+
+  const goNext = useCallback(() => {
+    if (!hasCards) return;
+    setSlideDirection(1);
+    setCurrentCardIndex((prev) => Math.min(prev + 1, filteredCards.length - 1));
+    setIsFlipped(false);
+  }, [filteredCards.length, hasCards]);
+
+  const goPrev = useCallback(() => {
+    if (!hasCards) return;
+    setSlideDirection(-1);
+    setCurrentCardIndex((prev) => Math.max(prev - 1, 0));
+    setIsFlipped(false);
+  }, [hasCards]);
+
+  const shuffleCards = useCallback(() => {
+    setShuffled((prev) => !prev);
+    setCurrentCardIndex(0);
+    setIsFlipped(false);
+  }, []);
+
+  // Calculate statistics for current set
+  const stats = useMemo(() => {
+    if (!currentSet) {
+      return { total: 0, studied: 0, known: 0, difficult: 0, accuracy: 0, progress: 0 };
     }
-  };
 
-  // Define the style object for the cards
-  const cardStyle: React.CSSProperties = {
-    width: 500,
-    height: 350,
-    border: `3px solid ${BRAND}`,
-    borderRadius: '1.5rem',
-    background: '#fff',
-    boxShadow: '0 10px 40px rgba(253, 168, 169, 0.2)',
-    // Center content alignment is often handled by the library, but Flexbox inside HTML helps
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  };
-
-  // Transform data for the library
-  const selectedCards: LibCard[] =
-    selectedSetIndex !== null && flashcardSets[selectedSetIndex]
-      ? flashcardSets[selectedSetIndex].questions.map((card, idx) => ({
-          id: idx + 1,
-          frontHTML: (
-            <div className="flex h-full w-full items-center justify-center text-center text-xl font-semibold p-6">
-              {card.front}
-            </div>
-          ),
-          backHTML: (
-            <div className="flex h-full w-full items-center justify-center text-center text-xl p-6">
-              {card.back}
-            </div>
-          ),
-          // FIXED: Pass the style here for each card
-          style: cardStyle,
-        }))
-      : [];
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-50 flex items-center justify-center">
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-          <motion.div
-            className="w-16 h-16 rounded-full border-4 border-t-transparent mb-4"
-            style={{ borderColor: BRAND }}
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-          />
-          <p className="text-gray-600 font-semibold">Φόρτωση Flashcards...</p>
-        </motion.div>
-      </div>
+    const setProgressData = progress[currentSet.id] || {};
+    const total = currentSet.questions.length;
+    const studied = Object.values(setProgressData).filter((p) => p.studied).length;
+    const known = Object.values(setProgressData).filter((p) => p.known).length;
+    const difficult = Object.values(setProgressData).filter((p) => p.difficult).length;
+    const totalTimesStudied = Object.values(setProgressData).reduce(
+      (sum, p) => sum + p.timesStudied,
+      0
     );
-  }
+    const totalTimesCorrect = Object.values(setProgressData).reduce(
+      (sum, p) => sum + p.timesCorrect,
+      0
+    );
+    const accuracy =
+      totalTimesStudied > 0 ? Math.round((totalTimesCorrect / totalTimesStudied) * 100) : 0;
+    const progressPercent = total > 0 ? Math.round((studied / total) * 100) : 0;
+
+    return { total, studied, known, difficult, accuracy, progress: progressPercent };
+  }, [currentSet, progress]);
+
+  // Calculate overall statistics
+  const overallStats = useMemo(() => {
+    let totalCards = 0;
+    let totalStudied = 0;
+    let totalKnown = 0;
+    let totalTimesStudied = 0;
+    let totalTimesCorrect = 0;
+
+    flashcardSets.forEach((set) => {
+      totalCards += set.questions.length;
+      const setProgressData = progress[set.id] || {};
+      totalStudied += Object.values(setProgressData).filter((p) => p.studied).length;
+      totalKnown += Object.values(setProgressData).filter((p) => p.known).length;
+      Object.values(setProgressData).forEach((p) => {
+        totalTimesStudied += p.timesStudied;
+        totalTimesCorrect += p.timesCorrect;
+      });
+    });
+
+    const overallProgress = totalCards > 0 ? Math.round((totalStudied / totalCards) * 100) : 0;
+    const overallAccuracy =
+      totalTimesStudied > 0 ? Math.round((totalTimesCorrect / totalTimesStudied) * 100) : 0;
+
+    return { totalCards, totalStudied, totalKnown, overallProgress, overallAccuracy };
+  }, [flashcardSets, progress]);
+
+  // Keep index valid when filtering changes.
+  useEffect(() => {
+    if (!filteredCards.length) {
+      setCurrentCardIndex(0);
+      setIsFlipped(false);
+      return;
+    }
+    setCurrentCardIndex((prev) => Math.min(prev, filteredCards.length - 1));
+  }, [filteredCards]);
+
+  // Pre-focus card so space/enter flip feels instant.
+  useEffect(() => {
+    if (selectedSetIndex !== null) {
+      cardBodyRef.current?.focus();
+    }
+  }, [selectedSetIndex, currentCardIndex]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (selectedSetIndex === null) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === 'Escape') {
+        setSelectedSetIndex(null);
+      } else if (e.key === 's' || e.key === 'S') {
+        shuffleCards();
+      } else if (e.key === 'r' || e.key === 'R') {
+        resetProgress();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        goNext();
+      } else if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        goPrev();
+      } else if (e.key === ' ' || e.key === 'Enter') {
+        e.preventDefault();
+        if (hasCards) setIsFlipped((prev) => !prev);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [selectedSetIndex, resetProgress, shuffleCards, goNext, goPrev, hasCards]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-rose-50 p-6">
-      <div className="max-w-6xl mx-auto">
-        {/* Header */}
+    <div className="min-h-screen bg-coral-wash dark:bg-gradient-to-br dark:from-[#2d1c48] dark:via-[#2d1c48] dark:to-[#1a1028]">
+      <header className="border-b border-[#f07f97]/35 dark:border-white/10 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-md">
         <motion.div
-          className="text-center mb-12"
+          className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-12 text-center"
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h1 className="text-5xl font-black mb-4 bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">
-            ⚡ Flashcards
+          <PageMenuIcon
+            icon="flashcards"
+            wrapperClassName="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#ff97b2]/15 dark:bg-white/10 mx-auto mb-3"
+            className="w-9 h-9"
+          />
+          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-[#faf5ef] tracking-tight">
+            Flashcards Πληροφορικής Πανελληνίων
           </h1>
-          <p className="text-gray-600 text-lg">Επίλεξε κατηγορία και ξεκίνα την εξάσκηση!</p>
+          {selectedSetIndex === null && (
+            <div className="flex flex-wrap justify-center gap-4 mt-4">
+              <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl px-4 py-2 shadow-lg border border-transparent dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <Target className="w-4 h-4 text-coral-accent" />
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    Σύνολο: {overallStats.totalCards} κάρτες
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl px-4 py-2 shadow-lg border border-transparent dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-green-600" />
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    Πρόοδος: {overallStats.overallProgress}%
+                  </span>
+                </div>
+              </div>
+              <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl px-4 py-2 shadow-lg border border-transparent dark:border-white/10">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                    Ακρίβεια: {overallStats.overallAccuracy}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </motion.div>
+      </header>
 
+      <div className="max-w-7xl mx-auto p-4 sm:p-6">
         <AnimatePresence mode="wait">
           {/* Category Selection */}
           {selectedSetIndex === null ? (
             <motion.div
               key="categories"
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             >
-              {flashcardSets.map((set, index) => (
-                <motion.button
-                  key={set.id}
-                  onClick={() => setSelectedSetIndex(index)}
-                  className="group relative p-4 rounded-2xl bg-white border-2 border-pink-200 hover:border-pink-400 hover:shadow-2xl transition-all text-left overflow-hidden"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  whileHover={{ y: -6, scale: 1.03 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center group-hover:from-pink-200 group-hover:to-rose-200 transition-all">
-                      <BookOpen className="w-6 h-6 text-pink-600" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-bold text-sm text-gray-800 group-hover:text-pink-600 transition-colors">
-                        {set.title}
-                      </h3>
-                    </div>
-                  </div>
+              {flashcardSets.map((set, index) => {
+                const setProgressData = progress[set.id] || {};
+                const setStats = {
+                  studied: Object.values(setProgressData).filter((p) => p.studied).length,
+                  known: Object.values(setProgressData).filter((p) => p.known).length,
+                  difficult: Object.values(setProgressData).filter((p) => p.difficult).length,
+                  progress:
+                    set.questions.length > 0
+                      ? Math.round(
+                          (Object.values(setProgressData).filter((p) => p.studied).length /
+                            set.questions.length) *
+                            100
+                        )
+                      : 0,
+                };
 
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-500">{set.questions.length} κάρτες</span>
-                    <div className="flex items-center gap-1 px-3 py-1 rounded-full bg-gradient-to-r from-pink-100 to-rose-100">
-                      <Zap className="w-4 h-4 text-pink-600" />
-                      <span className="font-bold text-pink-600">Start</span>
-                    </div>
-                  </div>
+                return (
+                  <motion.button
+                    key={set.id}
+                    onClick={() => {
+                      setSelectedSetIndex(index);
+                      setCurrentCardIndex(0);
+                      setIsFlipped(false);
+                      studySessionRef.current = { cardsStudied: new Set() };
+                    }}
+                    className="group relative p-4 sm:p-6 rounded-2xl bg-white dark:bg-[#3a2658] border-2 border-coral-accent/25 dark:border-[#f07f97]/30 hover:border-coral-accent dark:hover:border-[#f07f97] hover:shadow-2xl transition-all text-left overflow-hidden"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    whileHover={{ y: -6, scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                  >
+                    {/* Progress Bar */}
+                    {setStats.progress > 0 && (
+                      <div className="absolute top-0 left-0 h-1 w-full bg-gray-200 dark:bg-[#2d1c48]">
+                        <motion.div
+                          className="h-full bg-gradient-to-r from-coral-accent to-coral-strong"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${setStats.progress}%` }}
+                          transition={{ duration: 0.5 }}
+                        />
+                      </div>
+                    )}
 
-                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 to-rose-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </motion.button>
-              ))}
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-coral-wash to-coral-light/30 dark:from-coral-accent/20 dark:to-coral-strong/20 flex items-center justify-center group-hover:from-coral-light/40 group-hover:to-coral-accent/25 transition-all">
+                        <BookOpen className="w-6 h-6 text-coral-accent dark:text-coral-light" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-bold text-base text-gray-800 dark:text-gray-100 group-hover:text-coral-accent transition-colors">
+                          {set.title}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500 dark:text-gray-400">{set.questions.length} κάρτες</span>
+                        {setStats.progress > 0 && (
+                          <span className="font-bold text-coral-accent">{setStats.progress}%</span>
+                        )}
+                      </div>
+                      {setStats.studied > 0 && (
+                        <div className="flex items-center gap-4 text-xs text-gray-600 dark:text-gray-300">
+                          <span>✓ {setStats.known}</span>
+                          <span>⚠️ {setStats.difficult}</span>
+                          <span>📚 {setStats.studied}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff97b2] to-[#f07f97] text-white shadow-md">
+                        <Zap className="w-4 h-4" />
+                        <span className="font-bold text-sm">Έναρξη</span>
+                      </div>
+                    </div>
+
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-coral-accent to-coral-strong opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </motion.button>
+                );
+              })}
             </motion.div>
           ) : (
             /* Flashcard View */
@@ -213,42 +482,231 @@ const Flashcards: React.FC = () => {
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ type: 'spring', stiffness: 300 }}
             >
-              <motion.button
-                onClick={() => setSelectedSetIndex(null)}
-                className="mb-6 flex items-center gap-2 px-6 py-3 rounded-xl font-semibold bg-white border-2 border-pink-300 text-gray-800 hover:border-pink-400 shadow-lg"
-                whileHover={{ scale: 1.05, x: -4 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <ArrowLeft className="w-5 h-5" />
-                Πίσω
-              </motion.button>
+              {/* Controls Bar */}
+              <div className="w-full max-w-4xl mb-6 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl p-4 shadow-lg border border-transparent dark:border-white/10">
+                  <motion.button
+                    onClick={() => {
+                      setSelectedSetIndex(null);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl font-semibold bg-white dark:bg-[#3a2658] border-2 border-coral-accent/40 dark:border-white/15 text-gray-800 dark:text-gray-100 hover:border-coral-accent shadow-md transition-all"
+                    whileHover={{ scale: 1.05, x: -4 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                    <span className="hidden sm:inline">Πίσω</span>
+                  </motion.button>
 
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={studyMode}
+                      onChange={(e) => {
+                        setStudyMode(e.target.value as StudyMode);
+                      }}
+                      className="px-3 py-2 rounded-lg border-2 border-coral-accent/25 dark:border-white/15 bg-white dark:bg-[#3a2658] text-gray-800 dark:text-gray-100 font-semibold text-sm focus:outline-none focus:border-coral-accent"
+                    >
+                      <option value="all">Όλες</option>
+                      <option value="new">Νέες</option>
+                      <option value="difficult">Δύσκολες</option>
+                      <option value="review">Επανάληψη</option>
+                    </select>
+
+                    <motion.button
+                      onClick={shuffleCards}
+                      className={`p-2 rounded-lg border-2 transition-all ${
+                        shuffled
+                          ? 'bg-coral-accent border-coral-accent text-white'
+                          : 'bg-white dark:bg-[#3a2658] border-coral-accent/25 dark:border-white/15 text-gray-800 dark:text-gray-100 hover:border-coral-accent'
+                      }`}
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      title="Ανακάτεμα (S)"
+                    >
+                      <Shuffle className="w-5 h-5" />
+                    </motion.button>
+
+                    <motion.button
+                      onClick={resetProgress}
+                      className="p-2 rounded-lg border-2 border-red-200 dark:border-red-900 bg-white dark:bg-[#3a2658] text-red-600 dark:text-red-400 hover:border-red-400 transition-all"
+                      whileHover={{ scale: 1.1 }}
+                      whileTap={{ scale: 0.9 }}
+                      title="Επαναφορά (R)"
+                    >
+                      <RotateCcw className="w-5 h-5" />
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* Statistics */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+                  <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-transparent dark:border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target className="w-4 h-4 text-coral-accent" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Πρόοδος</span>
+                    </div>
+                    <div className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.progress}%</div>
+                  </div>
+                  <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-transparent dark:border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CheckCircle className="w-4 h-4 text-green-600" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Ξέρω</span>
+                    </div>
+                    <div className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.known}</div>
+                  </div>
+                  <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-transparent dark:border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <AlertCircle className="w-4 h-4 text-red-600" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Δύσκολες</span>
+                    </div>
+                    <div className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.difficult}</div>
+                  </div>
+                  <div className="bg-white/80 dark:bg-[#3a2658]/90 backdrop-blur-sm rounded-xl p-3 shadow-lg border border-transparent dark:border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <BarChart3 className="w-4 h-4 text-blue-600" />
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300">Ακρίβεια</span>
+                    </div>
+                    <div className="text-xl font-black text-gray-800 dark:text-gray-100">{stats.accuracy}%</div>
+                  </div>
+                </div>
+
+                {/* Session Info */}
+                <div className="bg-gradient-to-r from-coral-wash to-coral-light/25 dark:from-[#3a2658] dark:to-[#2d1c48] rounded-xl p-3 shadow-md border border-transparent dark:border-white/10">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-coral-accent" />
+                      <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                        Κάρτα {hasCards ? currentCardIndex + 1 : 0} από {filteredCards.length}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-coral-accent" />
+                      <span className="text-gray-700 dark:text-gray-200 font-semibold">
+                        Μελετημένες: {studySessionRef.current.cardsStudied.size}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Flashcard Display */}
               <motion.div
-                className="flex justify-center w-full mb-8"
+                className="flex justify-center w-full mb-6"
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.2 }}
               >
-                {selectedCards.length > 0 ? (
-                  /* FIXED: Removed 'style' prop from FlashcardArray */
-                  <FlashcardArray cards={selectedCards} />
+                {hasCards && currentCard ? (
+                  <div className="w-full max-w-2xl">
+                    <div className="relative">
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.button
+                          key={currentCard.id}
+                          ref={cardBodyRef}
+                          onClick={() => setIsFlipped((prev) => !prev)}
+                          className="relative w-full min-h-[340px] rounded-3xl bg-white dark:bg-[#3a2658] border-2 border-coral-accent/25 dark:border-[#f07f97]/30 p-6 text-left shadow-2xl focus:outline-none focus:ring-2 focus:ring-coral-accent/35"
+                          style={{ transformStyle: 'preserve-3d' }}
+                          initial={{ opacity: 0, y: 24 * slideDirection, rotateY: 0 }}
+                          animate={{ opacity: 1, y: 0, rotateY: isFlipped ? 180 : 0 }}
+                          exit={{ opacity: 0, y: -24 * slideDirection }}
+                          transition={{ type: 'spring', stiffness: 240, damping: 26 }}
+                          whileTap={{ scale: 0.995 }}
+                          aria-label="Flip flashcard"
+                        >
+                          {currentCardProgress?.difficult && (
+                            <AlertCircle className="absolute top-4 right-4 w-5 h-5 text-red-500" />
+                          )}
+                          {currentCardProgress?.known && (
+                            <CheckCircle className="absolute top-4 right-4 w-5 h-5 text-green-500" />
+                          )}
+
+                          <div
+                            className="text-xs font-bold uppercase tracking-wide text-coral-accent mb-4"
+                            style={{ transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+                          >
+                            {isFlipped ? 'Απάντηση' : 'Ερώτηση'}
+                          </div>
+                          <div
+                            className={`${
+                              isFlipped ? 'text-gray-800 dark:text-gray-100 font-normal' : 'text-coral-strong dark:text-coral-light font-bold'
+                            }`}
+                            style={{ transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)' }}
+                          >
+                            <FlashcardText
+                              text={isFlipped ? currentCard.back : currentCard.front}
+                              className="text-xl sm:text-2xl"
+                            />
+                          </div>
+                        </motion.button>
+                      </AnimatePresence>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={goPrev}
+                          disabled={currentCardIndex === 0}
+                          className="px-3 py-2 rounded-lg border border-coral-accent/30 bg-white text-coral-strong hover:bg-coral-wash transition-colors disabled:opacity-40 disabled:cursor-not-allowed dark:bg-[#3a2658] dark:text-coral-light dark:border-coral-accent/40 dark:hover:bg-[#2d1c48]"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={goNext}
+                          disabled={currentCardIndex >= filteredCards.length - 1}
+                          className="px-3 py-2 rounded-lg border border-coral-accent/30 bg-white text-coral-strong hover:bg-coral-wash transition-colors disabled:opacity-40 disabled:cursor-not-allowed dark:bg-[#3a2658] dark:text-coral-light dark:border-coral-accent/40 dark:hover:bg-[#2d1c48]"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => markAsKnown(currentCard.id)}
+                          className="px-3 py-2 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors text-sm font-semibold"
+                        >
+                          ✓ Ξέρω
+                        </button>
+                        <button
+                          onClick={() => markAsDifficult(currentCard.id)}
+                          className="px-3 py-2 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors text-sm font-semibold"
+                        >
+                          ✗ Δύσκολο
+                        </button>
+                        <button
+                          onClick={() => markForReview(currentCard.id)}
+                          className="px-3 py-2 rounded-lg bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors text-sm font-semibold"
+                        >
+                          🔄 Επανάληψη
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-4 text-center text-sm text-gray-600 dark:text-gray-300">
+                      {filteredCards.length}{' '}
+                      {studyMode !== 'all' &&
+                        `(${studyMode === 'difficult' ? 'δύσκολες' : studyMode === 'review' ? 'για επανάληψη' : 'νέες'})`}{' '}
+                      κάρτες διαθέσιμες
+                    </div>
+                  </div>
                 ) : (
-                  <div className="bg-white rounded-3xl p-8 shadow-2xl text-center border-2 border-pink-200">
-                    <p className="text-gray-500">Δεν υπάρχουν διαθέσιμα flashcards.</p>
+                  <div className="bg-white dark:bg-[#3a2658] rounded-3xl p-8 shadow-2xl text-center border-2 border-coral-accent/25 dark:border-white/10 max-w-md">
+                    <Filter className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600 dark:text-gray-200 font-semibold mb-2">Δεν υπάρχουν κάρτες</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      {studyMode === 'difficult'
+                        ? 'Δεν έχεις σημειώσει δύσκολες κάρτες ακόμα'
+                        : studyMode === 'review'
+                          ? 'Δεν υπάρχουν κάρτες για επανάληψη'
+                          : 'Όλες οι κάρτες έχουν μελετηθεί'}
+                    </p>
+                    <button
+                      onClick={() => setStudyMode('all')}
+                      className="mt-4 px-4 py-2 bg-coral-accent text-white rounded-lg font-semibold hover:bg-coral-strong transition-colors"
+                    >
+                      Προβολή όλων
+                    </button>
                   </div>
                 )}
               </motion.div>
 
-              <motion.div
-                className="bg-gradient-to-r from-pink-50 to-rose-50 rounded-2xl p-6 max-w-md"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-              >
-                <p className="text-center text-gray-600">
-                  💡 <strong>Tip:</strong> Κάνε κλικ στην κάρτα για να τη γυρίσεις!
-                </p>
-              </motion.div>
             </motion.div>
           )}
         </AnimatePresence>

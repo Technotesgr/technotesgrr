@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Code,
   Briefcase,
@@ -10,15 +10,33 @@ import {
   CheckCircle,
   GraduationCap,
   LucideIcon,
+  RotateCcw,
+  Save,
+  AlertCircle,
+  CheckCircle2,
+  Loader2,
+  Brain,
+  Zap,
+  Users,
+  Wind,
+  Target,
+  Lightbulb,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
+import { getBackendUrl } from '@/utils/backendUrl';
+import { apiFetch } from '@/utils/apiClient';
+import { motion, AnimatePresence } from 'framer-motion';
+import { PageMenuIcon } from '@/data/menuIcons';
+import {
+  type CategoryKey,
+  computeCareerOrientationResults,
+  normalizeAnswersMap,
+} from '@/utils/careerOrientationScoring';
 
-/**
- * ═══════════════════════════════════════════════════════════════
- * 🦕 TYPES & INTERFACES
- * ═══════════════════════════════════════════════════════════════
- */
-
-type CategoryKey = 'INFO' | 'FIN' | 'DIOIK' | 'OIK' | 'SERV' | 'PEDAGOGIKA' | 'SOMATA' | 'TEXNES';
+// ─────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────
 
 interface School {
   name: string;
@@ -27,7 +45,6 @@ interface School {
   base: string;
   note?: string;
 }
-
 interface CategoryData {
   title: string;
   description: string;
@@ -36,179 +53,205 @@ interface CategoryData {
   gradient: string;
   schools: School[];
 }
-
-interface CalculationResult {
-  finalScores: Record<CategoryKey, number>;
-  topCategory: CategoryKey;
-  tiedCategories: CategoryKey[];
-  sortedScores: { category: CategoryKey; score: number }[];
+type CalculationResult = ReturnType<typeof computeCareerOrientationResults>;
+interface Section {
+  id: string;
+  title: string;
+  icon: LucideIcon;
+  color: string;
+  bg: string;
+  questions: number[];
+}
+interface SavedResultApiShape {
+  answers?: Record<string, number>;
+  final_scores?: Record<CategoryKey, number>;
+  top_category?: CategoryKey;
+  sorted_scores?: Array<{ category: CategoryKey; score: number; pct?: number }>;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 📊 ΔΕΔΟΜΕΝΑ
-// ═══════════════════════════════════════════════════════════════
-
-// 1. Ερωτήσεις (Q_ID: Ερώτηση)
+// ─────────────────────────────────────────────────────────────
+// 50 ΕΡΩΤΗΣΕΙΣ
+// ─────────────────────────────────────────────────────────────
 const QUESTIONS: Record<number, string> = {
-  // ΕΝΟΤΗΤΑ Α: ΠΛΗΦΟΡΙΚΗ & ΤΕΧΝΟΛΟΓΙΑ (INFO)
-  1: 'Με ενδιαφέρει ο προγραμματισμός και η δημιουργία εφαρμογών ή ιστοσελίδων.',
-  2: 'Μου αρέσει να βρίσκω λύσεις σε επιχειρηματικά προβλήματα χρησιμοποιώντας δεδομένα και αλγόριθμους.',
-  3: 'Η χρήση της Πληροφορικής (AI, Big Data) για την πρόβλεψη οικονομικών τάσεων είναι συναρπαστική.',
-  // ΕΝΟΤΗΤΑ Β: ΑΚΑΔΗΜΑΪΚΑ ΟΙΚΟΝΟΜΙΚΑ (OIK)
-  4: 'Θέλω να ασχοληθώ με τη θεωρία, να γράψω μελέτες και να αναλύσω τα αίτια των οικονομικών κρίσεων.',
-  5: 'Η μελέτη της Μακροοικονομίας (ΑΕΠ, πληθωρισμός) και οι πολιτικές των Κεντρικών Τραπεζών με ελκύουν.',
-  6: 'Προτιμώ την ακαδημαϊκή έρευνα και τη συστηματική μελέτη των οικονομικών συστημάτων.',
-  // ΕΝΟΤΗΤΑ Γ: ΔΙΟΙΚΗΣΗ & MARKETING (DIOIK)
-  7: 'Θέλω να διαχειρίζομαι ομάδες, να παίρνω αποφάσεις και να ηγούμαι στην υλοποίηση στόχων μιας εταιρείας.',
-  8: 'Με ενδιαφέρει το πώς θα προωθήσω ένα προϊόν ή υπηρεσία, χτίζοντας μια επιτυχημένη μάρκα (Marketing).',
-  9: 'Είμαι καλός/ή στην οργάνωση διαδικασιών και πιστεύω ότι η βελτιστοποίηση της παραγωγής είναι κλειδί (Management).',
-  // ΕΝΟΤΗΤΑ Δ: ΛΟΓΙΣΤΙΚΗ & ΧΡΗΜΑΤΟΟΙΚΟΝΟΜΙΚΑ (FIN)
-  10: 'Είμαι προσεκτικός/ή στις λεπτομέρειες και με ενδιαφέρει η τήρηση οικονομικών βιβλίων (Λογιστική).',
-  11: 'Θέλω να εργαστώ στον χρηματοπιστωτικό τομέα (Τράπεζες, Επενδυτικές) και να διαχειρίζομαι κεφάλαια.',
-  12: 'Με ευχαριστεί η Στατιστική Ανάλυση, η πιθανότητα και η εφαρμογή σύνθετων μαθηματικών μοντέλων.',
-  // ΕΝΟΤΗΤΑ Ε: ΔΙΕΘΝΗ & ΥΠΗΡΕΣΙΕΣ (SERV)
-  13: 'Θέλω να ασχοληθώ με τις διεθνείς οικονομικές σχέσεις, το εμπόριο και τις γεωπολιτικές επιπτώσεις τους.',
-  14: 'Με ενδιαφέρει ο κλάδος του Τουρισμού ή της Ναυτιλίας και η διοίκηση υπηρεσιών.',
-  15: 'Θεωρώ ότι μια ξένη γλώσσα (π.χ. Αγγλικά, Γερμανικά) είναι απαραίτητο εφόδιο για την καριέρα μου.',
-  // ΕΝΟΤΗΤΑ ΣΤ: ΣΩΜΑΤΑ ΑΣΦΑΛΕΙΑΣ & ΕΦΑΑ (SOMATA)
-  16: 'Με ελκύει η στρατιωτική/αστυνομική ζωή, η πειθαρχία και η ιεραρχία.',
-  17: 'Έχω εξαιρετική φυσική κατάσταση και θα με ενδιέφερε μια καριέρα που απαιτεί σωματική ετοιμότητα.',
-  18: 'Θέλω μια καριέρα με σαφείς ρόλους, προσφορά στην πατρίδα/ασφάλεια και σταθερότητα (Στρατός, Αστυνομία, Πυροσβεστική).',
-  19: 'Με ενδιαφέρει η εκγύμναση και η προπόνηση αθλητών (Επιστήμη Φυσικής Αγωγής & Αθλητισμού - ΕΦΑΑ).',
-  // ΕΝΟΤΗΤΑ Ζ: ΠΑΙΔΑΓΩΓΙΚΑ (PEDAGOGIKA)
-  20: 'Με ενδιαφέρει η διδασκαλία και η φροντίδα παιδιών προσχολικής ή σχολικής ηλικίας (Δημοτικό/Νηπιαγωγείο).',
-  21: 'Έχω υπομονή, ενσυναίσθηση και θέλω να συμβάλλω στη γνωστική ανάπτυξη των μαθητών.',
-  22: 'Ενδιαφέρομαι για την Ειδική Αγωγή και τη στήριξη μαθητών με ιδιαίτερες ανάγκες.',
-  23: 'Προτιμώ μια καριέρα όπου ο κύριος ρόλος μου είναι η εκπαίδευση και η καθοδήγηση.',
-  // ΕΝΟΤΗΤΑ Η: ΤΕΧΝΕΣ & ΚΑΛΛΙΤΕΧΝΙΚΕΣ ΣΧΟΛΕΣ (TEXNES)
-  24: 'Έχω έντονο καλλιτεχνικό ενδιαφέρον (π.χ. Μουσική, Θέατρο, Σχέδιο) και θέλω να το σπουδάσω.',
-  25: 'Με ενδιαφέρει η τεχνική πλευρά της τέχνης, όπως ο Ήχος, η Εικόνα, η Φωτογραφία ή ο Κινηματογράφος.',
-  26: 'Είμαι έτοιμος/η να εξεταστώ σε ειδικά μαθήματα (π.χ. Αρμονία, Σχέδιο) για την εισαγωγή μου.',
-  27: 'Η δημιουργία οπτικών έργων (design, γραφιστική) ή η εσωτερική αρχιτεκτονική με ελκύει.',
-  // ΕΝΟΤΗΤΑ Θ: ΓΕΝΙΚΕΣ ΠΡΟΤΙΜΗΣΕΙΣ
-  28: 'Η επιλογή μου θα πρέπει να οδηγήσει σε επάγγελμα με υψηλή ζήτηση και υψηλές αποδοχές.',
-  29: 'Είμαι πρόθυμος/η να σπουδάσω μακριά από τη Θεσσαλονίκη ή την Αθήνα.',
-  30: 'Θεωρώ τον εαυτό μου πιο τεχνοκράτη παρά διοικητικό.',
-  31: 'Η ακρίβεια και η τάξη είναι πιο σημαντικές από την ταχύτητα στην εκτέλεση της εργασίας μου.',
-  32: 'Προτιμώ τη διαχείριση ανθρώπων από τη διαχείριση χρημάτων ή συστημάτων.',
-  33: 'Πιστεύω ότι το μέλλον της Οικονομίας συνδέεται άρρηκτα με την Τεχνολογία.',
-  34: 'Ενδιαφέρομαι για την ανακύκλωση, τη βιώσιμη ανάπτυξη και το περιβάλλον.',
-  35: 'Με ενδιαφέρει να ασχοληθώ με την ανάλυση κινδύνου και την ασφαλιστική επιστήμη.',
-  36: 'Προτιμώ τη δουλειά γραφείου και τη συστηματική ανάλυση έναντι των εξωτερικών ή απαιτητικών φυσικά εργασιών.',
-  37: 'Μου αρέσει να δουλεύω με παιδιά (Παιδαγωγικά) και με ενδιαφέρει η ψυχολογία της ανάπτυξης.',
-  38: 'Η δημιουργία (π.χ. σκηνοθεσία, σύνθεση) είναι πιο σημαντική από την ερμηνεία ενός έτοιμου ρόλου.',
-  39: 'Η ιδέα της ένταξης σε ένα Σώμα με αυστηρούς κανονισμούς μου προσφέρει ασφάλεια.',
-  40: 'Θα προτιμούσα μια καριέρα που συνδυάζει Οικονομία/Διοίκηση με τη Ναυτιλία/Διεθνείς Σχέσεις.',
-  41: 'Είμαι οργανωτικός/ή και με ενδιαφέρει η μεθοδική καταγραφή (π.χ. Αρχειονομία, Βιβλιοθηκονομία).',
-  42: 'Έχω καλή αίσθηση του χώρου και με ενδιαφέρει η αρχιτεκτονική ή ο σχεδιασμός προϊόντων.',
-  43: 'Η επιλογή σχολής πρέπει να είναι μια από τις πιο ανταγωνιστικές και υψηλόβαθμες (βάσει μορίων).',
-  44: 'Είμαι καλός/ή στην ιστορία, τη φιλοσοφία και τη θεωρητική ανάλυση (Ιστορίας και Φιλοσοφίας της Επιστήμης).',
-  45: 'Η δημόσια διοίκηση και η νομική/κοινωνική πολιτική με ελκύουν.',
+  // ΤΡΟΠΟΣ ΣΚΕΨΗΣ (1-10)
+  1: 'Όταν αντιμετωπίζεις άγνωστο πρόβλημα, το χωρίζεις αυτόματα σε μικρότερα βήματα πριν κινηθείς.',
+  2: 'Σε ενοχλεί να χρησιμοποιείς κάτι χωρίς να καταλαβαίνεις πώς λειτουργεί εσωτερικά.',
+  3: 'Όταν ψάχνεις κάτι που σε ενδιαφέρει, καταλήγεις με δεκάδες ανοιχτές καρτέλες και ξεχνάς τον χρόνο.',
+  4: 'Βλέπεις εύκολα συνδέσεις μεταξύ φαινομενικά άσχετων πραγμάτων (π.χ. μαθηματικά & μουσική).',
+  5: 'Πριν ξεκινήσεις οτιδήποτε σημαντικό, φτιάχνεις λίστα ή σχέδιο — ακόμα και για τις διακοπές.',
+  6: 'Νιώθεις πιο άνετα με αριθμούς και δεδομένα παρά με αόριστες εκτιμήσεις.',
+  7: 'Αν κάτι δεν έχει λογική εξήγηση, δεν μπορείς να το αφήσεις — το ψάχνεις μέχρι να το καταλάβεις.',
+  8: 'Θυμάσαι καλύτερα πράγματα που τα είδες οπτικά (διάγραμμα, mind map) παρά αυτά που μόνο διάβασες.',
+  9: 'Σε συζήτηση, συχνά εσύ λες "ναι, αλλά αν το δούμε από την άλλη πλευρά...".',
+  10: 'Όταν κάτι πάει στραβά, ψάχνεις πρώτα την αιτία — όχι τον ένοχο.',
+  // ΛΗΨΗ ΑΠΟΦΑΣΕΩΝ (11-18)
+  11: 'Μεταξύ μιας σίγουρης/μέτριας επιλογής και μιας ριψοκίνδυνης/πολλά υποσχόμενης, διαλέγεις την ριψοκίνδυνη.',
+  12: 'Μετά από λάθος απόφαση, αναλύεις τι πήγε στραβά αντί να μετανιώνεις απλώς.',
+  13: 'Παίρνεις σημαντικές αποφάσεις κυρίως με βάση το ένστικτο/συναίσθημα, όχι υπολογισμό.',
+  14: 'Αν φίλος σε πιέζει να κάνεις κάτι που δεν θέλεις, του λες εύκολα "όχι" χωρίς τύψεις.',
+  15: 'Πριν αγοράσεις κάτι αξίας 50€+, κάνεις πάντα σύγκριση και ανάγνωση κριτικών.',
+  16: 'Αν ανακαλύψεις στη μέση ενός project ότι η προσέγγισή σου ήταν λάθος, σταματάς και αλλάζεις κατεύθυνση.',
+  17: 'Σε ομαδικές αποφάσεις, ακούς όλους πριν εκφράσεις τη γνώμη σου.',
+  18: 'Μετά από αποτυχία, σκέφτεσαι "τι θα έκανα διαφορετικά" — όχι "γιατί μου συνέβη αυτό".',
+  // ΚΟΙΝΩΝΙΚΗ ΣΥΜΠΕΡΙΦΟΡΑ (19-26)
+  19: 'Σε ομαδική εργασία, αναλαμβάνεις αυτόματα τον ρόλο του συντονιστή χωρίς να σου ζητηθεί.',
+  20: 'Όταν φίλος μοιράζεται πρόβλημα, η πρώτη σου αντίδραση είναι να του προτείνεις λύσεις.',
+  21: 'Αισθάνεσαι άνετα να μιλάς μπροστά σε ομάδα ανθρώπων που δεν γνωρίζεις.',
+  22: 'Μετά από βραδιά με πολύ κόσμο, χρειάζεσαι χρόνο μόνος/η για να "επαναφορτιστείς".',
+  23: 'Νιώθεις αληθινή ικανοποίηση όταν κάποιος βελτιώνεται ή μαθαίνει κάτι χάρη σε σένα.',
+  24: 'Σε νέα παρέα, συνήθως εσύ ξεκινάς τις συζητήσεις και κρατάς ζωντανή την ατμόσφαιρα.',
+  25: 'Προτιμάς να δουλεύεις ήσυχα μόνος/η παρά σε ανοιχτό χώρο με διαρκή ανθρώπινη επαφή.',
+  26: 'Καταλαβαίνεις εύκολα πώς νιώθει κάποιος, ακόμα και αν δεν το εκφράζει ανοιχτά.',
+  // ΑΝΤΙΔΡΑΣΗ ΣΤΟ ΣΤΡΕΣ (27-34)
+  27: 'Με τρεις εργασίες και ίδιο deadline, οργανώνεσαι χωρίς πανικό και τις παραδίδεις όλες.',
+  28: 'Αν σε εξέταση "κολλήσεις" σε ερώτηση, προχωράς αμέσως στην επόμενη χωρίς να χάσεις ρυθμό.',
+  29: 'Σε κατάσταση έκτακτης ανάγκης (ατύχημα, πανικός), παραμένεις ψύχραιμος/η και οργανώνεις.',
+  30: 'Αν αποτύχεις σε κάτι σημαντικό, το ξεπερνάς σε λίγες μέρες και συνεχίζεις.',
+  31: 'Το να μην ξέρεις τι σου επιφυλάσσει το μέλλον (π.χ. σχολή, δουλειά) σε αγχώνει έντονα.',
+  32: 'Αν σε κριτικάρουν άδικα μπροστά σε άλλους, το αφήνεις πίσω σου χωρίς να σε "κατατρώει".',
+  33: 'Σε περιόδους έντονης πίεσης, γίνεσαι πιο focused και παραγωγικός/ή παρά να μπλοκάρεις.',
+  34: 'Όταν αλλάζει κάτι απρόσμενα, προσαρμόζεσαι γρήγορα αντί να κολλάς σε ό,τι χάθηκε.',
+  // ΚΙΝΗΤΡΑ & ΑΞΙΕΣ (35-41)
+  35: 'Αν επέλεγες καριέρα, θα έδινες βαρύτητα στις υψηλές αποδοχές έναντι του νοήματος.',
+  36: 'Σε παρακινεί περισσότερο η αναγνώριση και ο έπαινος παρά η προσωπική σου ικανοποίηση.',
+  37: 'Θέλεις η δουλειά σου να έχει άμεση επίδραση σε ζωές ανθρώπων — να βλέπεις τη διαφορά που κάνεις.',
+  38: 'Αν εταιρεία που εκτιμάς κάνει κάτι ανήθικο, θα σταματούσες να τη στηρίζεις έστω και αν κοστίζει.',
+  39: 'Το να ανεβείς ιεραρχικά και να έχεις εξουσία είναι σημαντικό κίνητρο για σένα.',
+  40: 'Προτιμάς να δουλεύεις για μακροπρόθεσμο στόχο (χρόνια μακριά) παρά να βλέπεις άμεσα αποτελέσματα.',
+  41: 'Αν η δουλειά σου δεν συμφωνεί με τις αξίες σου, δεν θα μπορούσες να τη συνεχίσεις ακόμα και αν πληρώνεσαι καλά.',
+  // ΔΗΜΙΟΥΡΓΙΚΟΤΗΤΑ & ΠΕΡΙΕΡΓΕΙΑ (42-47)
+  42: 'Στον ελεύθερο χρόνο σου καταλήγεις να δημιουργείς κάτι: σχέδιο, κώδικα, μουσική, κείμενο.',
+  43: 'Βαριέσαι γρήγορα αν κάτι είναι επαναληπτικό χωρίς καμία πνευματική πρόκληση.',
+  44: 'Ερευνάς θέματα που σε ενδιαφέρουν μόνος/η, έξω από το σχολικό πρόγραμμα.',
+  45: 'Για να λύσεις πρόβλημα, προτιμάς εντελώς νέα προσέγγιση παρά τον γνωστό τρόπο.',
+  46: 'Η αισθητική ενός χώρου ή αντικειμένου σε επηρεάζει έντονα — ένας άσχημος χώρος σε κάνει χειρότερα.',
+  47: 'Project με πλήρη ελευθερία (χωρίς οδηγίες) σε ενθουσιάζει περισσότερο από ένα με σαφές πλαίσιο.',
+  // ΠΡΑΚΤΙΚΗ ΝΟΗΜΟΣΥΝΗ (48-50)
+  48: 'Αν κάτι χαλάσει, η πρώτη σου αντίδραση είναι να το φτιάξεις μόνος/η — όχι να καλέσεις κάποιον.',
+  49: 'Μαθαίνεις πολύ καλύτερα κάνοντας κάτι παρά ακούγοντας θεωρία.',
+  50: 'Αν έπρεπε να μάθεις κάτι δύσκολο σε μια εβδομάδα, το αντιμετωπίζεις ως συναρπαστική πρόκληση.',
 };
 
-// 2. Πίνακας Βαθμολόγησης (Συντελεστές)
-const SCORE_MATRIX: Record<number, number[]> = {
-  // INFO, FIN, DIOIK, OIK, SERV, PEDAGOGIKA (P), SOMATA (S), TEXNES (T)
-  1: [4, 1, 1, 0, 0, 0, 0, 0],
-  2: [3, 1, 1, 0, 0, 0, 0, 0],
-  3: [4, 1, 0, 1, 0, 0, 0, 0],
-  4: [0, 1, 0, 4, 1, 0, 0, 0],
-  5: [0, 1, 0, 3, 0, 0, 0, 0],
-  6: [0, 0, 0, 4, 0, 0, 0, 0],
-  7: [1, 1, 4, 0, 0, 0, 0, 0],
-  8: [0, 0, 4, 0, 1, 0, 0, 0],
-  9: [0, 1, 3, 0, 0, 0, 0, 0],
-  10: [0, 4, 0, 0, 0, 0, 0, 0],
-  11: [0, 4, 0, 1, 0, 0, 0, 0],
-  12: [1, 3, 0, 1, 0, 0, 0, 0],
-  13: [0, 0, 0, 1, 4, 0, 0, 0],
-  14: [0, 0, 1, 0, 3, 0, 0, 0],
-  15: [0, 0, 0, 0, 4, 0, 0, 0],
-  16: [0, 0, 0, 0, 0, 0, 3, 0],
-  17: [0, 0, 0, 0, 0, 0, 4, 0],
-  18: [0, 0, 0, 0, 0, 0, 0, 2],
-  19: [3, 1, 1, 0, 0, 0, 0, 0],
-  20: [0, 0, 0, 0, 0, 4, 0, 0],
-  21: [0, 0, 0, 0, 0, 4, 0, 0],
-  22: [0, 0, 0, 0, 0, 3, 0, 0],
-  23: [0, 0, 0, 0, 0, 5, 0, 0],
-  24: [0, 0, 0, 0, 0, 0, 0, 4],
-  25: [0, 0, 0, 0, 0, 0, 0, 4],
-  26: [0, 0, 0, 0, 0, 0, 0, 5],
-  27: [0, 0, 0, 0, 0, 0, 0, 3],
-  28: [2, 2, 2, 1, 2, 0, 1, 1],
-  29: [0, 1, 1, 1, 1, 1, 1, 1],
-  30: [3, 0, 1, 1, 0, 0, 0, 0],
-  31: [0, 4, 0, 0, 0, 0, 0, 0],
-  32: [0, 0, 3, 0, 1, 1, 0, 0],
-  33: [3, 1, 1, 0, 0, 0, 0, 0],
-  34: [0, 0, 0, 1, 0, 0, 0, 0],
-  35: [0, 4, 0, 0, 0, 0, 0, 0],
-  36: [1, 2, 0, 1, 0, 1, 0, 0],
-  37: [0, 0, 0, 0, 0, 4, 0, 0],
-  38: [0, 0, 0, 0, 0, 0, 0, 3],
-  39: [0, 0, 0, 0, 0, 0, 4, 0],
-  40: [0, 0, 0, 0, 3, 0, 0, 0],
-  41: [0, 0, 0, 0, 1, 1, 0, 0],
-  42: [0, 0, 0, 0, 0, 0, 0, 3],
-  43: [1, 1, 1, 1, 1, 0, 2, 0],
-  44: [0, 0, 0, 3, 0, 0, 0, 0],
-  45: [0, 0, 0, 3, 0, 1, 1, 0],
-};
-
-// 3. Κατηγορίες και Πληροφορίες Αποτελεσμάτων
-const CATEGORY_NAMES: CategoryKey[] = [
-  'INFO',
-  'FIN',
-  'DIOIK',
-  'OIK',
-  'SERV',
-  'PEDAGOGIKA',
-  'SOMATA',
-  'TEXNES',
+// ─────────────────────────────────────────────────────────────
+// SECTIONS
+// ─────────────────────────────────────────────────────────────
+const SECTIONS: Section[] = [
+  {
+    id: 'thinking',
+    title: 'Τρόπος Σκέψης',
+    icon: Brain,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  },
+  {
+    id: 'decisions',
+    title: 'Λήψη Αποφάσεων',
+    icon: Zap,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [11, 12, 13, 14, 15, 16, 17, 18],
+  },
+  {
+    id: 'social',
+    title: 'Κοινωνική Συμπεριφορά',
+    icon: Users,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [19, 20, 21, 22, 23, 24, 25, 26],
+  },
+  {
+    id: 'stress',
+    title: 'Αντίδραση στο Στρες',
+    icon: Wind,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [27, 28, 29, 30, 31, 32, 33, 34],
+  },
+  {
+    id: 'motivation',
+    title: 'Κίνητρα & Αξίες',
+    icon: Target,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [35, 36, 37, 38, 39, 40, 41],
+  },
+  {
+    id: 'creativity',
+    title: 'Δημιουργικότητα',
+    icon: Lightbulb,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [42, 43, 44, 45, 46, 47],
+  },
+  {
+    id: 'practical',
+    title: 'Πρακτική Νοημοσύνη',
+    icon: Code,
+    color: 'text-[#f07f97] dark:text-[#ff97b2]',
+    bg: 'bg-[#fff5f8] dark:bg-[#2d1c48]/80 border border-[#f07f97]/20 dark:border-white/10',
+    questions: [48, 49, 50],
+  },
 ];
 
-const RECALCULATED_MAX_SCORES: Record<CategoryKey, number> = {
-  INFO: 170,
-  FIN: 155,
-  DIOIK: 140,
-  OIK: 125,
-  SERV: 110,
-  PEDAGOGIKA: 80,
-  SOMATA: 80,
-  TEXNES: 95,
+// ─────────────────────────────────────────────────────────────
+// RESULTS DATA
+// ─────────────────────────────────────────────────────────────
+const BORDER_MAP: Record<CategoryKey, string> = {
+  INFO: 'border-[#f07f97]',
+  FIN: 'border-[#e06d88]',
+  DIOIK: 'border-[#ff97b2]',
+  OIK: 'border-[#d96a85]',
+  SERV: 'border-[#f07f97]/80',
+  PEDAGOGIKA: 'border-[#ffb3c7]',
+  SOMATA: 'border-[#e06d88]/90',
+  TEXNES: 'border-[#f07f97]',
+};
+const BAR_MAP: Record<CategoryKey, string> = {
+  INFO: 'from-[#f07f97] to-[#e06d88]',
+  FIN: 'from-[#e06d88] to-[#d96a85]',
+  DIOIK: 'from-[#ff97b2] to-[#f07f97]',
+  OIK: 'from-[#f07f97] to-[#ff97b2]',
+  SERV: 'from-[#d96a85] to-[#f07f97]',
+  PEDAGOGIKA: 'from-[#ffb3c7] to-[#f07f97]',
+  SOMATA: 'from-[#e06d88] to-[#ff97b2]',
+  TEXNES: 'from-[#f07f97] to-[#d96a85]',
 };
 
-const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
+const CATEGORY_ACCENT = 'text-[#f07f97] dark:text-[#ff97b2]';
+const CATEGORY_GRADIENT =
+  'from-[#fff5f8] to-white dark:from-[#2d1c48]/70 dark:to-[#3a2658]';
+
+const RESULTS: Record<CategoryKey, CategoryData> = {
   INFO: {
-    title: 'Πληροφορική & Τεχνολογική Διοίκηση 🚀',
+    title: 'Πληροφορική & Τεχνολογική Διοίκηση',
     description:
-      'Η κλίση σας είναι στον συνδυασμό της τεχνολογίας, των συστημάτων και της διοίκησης. Σας ταιριάζουν σχολές που εστιάζουν στην ανάλυση δεδομένων, τον ψηφιακό μετασχηματισμό και τη λήψη αποφάσεων με τεχνολογικά εργαλεία.',
+      'Σκέφτεσαι αναλυτικά, αγαπάς τα δεδομένα και σε συναρπάζει η τεχνολογία. Ταιριάζεις σε ρόλους που συνδυάζουν λογική και ψηφιακά εργαλεία.',
     icon: Code,
-    color: 'text-fuchsia-600',
-    gradient: 'from-fuchsia-100 to-white dark:from-fuchsia-900/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       {
-        name: 'Διοικητικής Επιστήμης και Τεχνολογίας (ΟΠΑ)',
+        name: 'Διοικητικής Επιστήμης & Τεχνολογίας (ΟΠΑ)',
         city: 'Αθήνα',
         code: 240,
         base: '18.400',
       },
       { name: 'Πληροφορικής (ΑΠΘ)', city: 'Θεσσαλονίκη', code: 338, base: '17.720' },
-      { name: 'Πληροφορικής και Τηλεπικοινωνιών (ΕΚΠΑ)', city: 'Αθήνα', code: 330, base: '16.955' },
+      { name: 'Πληροφορικής & Τηλεπικοινωνιών (ΕΚΠΑ)', city: 'Αθήνα', code: 330, base: '16.955' },
     ],
   },
   FIN: {
-    title: 'Λογιστική, Χρηματοοικονομικά & Στατιστική 📊',
+    title: 'Λογιστική, Χρηματοοικονομικά & Στατιστική',
     description:
-      'Είστε ακριβής, αναλυτικός/ή και σας ελκύει ο κόσμος των αριθμών, των επενδύσεων και της διαχείρισης κινδύνου. Η καριέρα σας βρίσκεται στις τράπεζες, τα λογιστικά γραφεία και τις ασφαλιστικές εταιρείες.',
+      'Είσαι μεθοδικός/ή και ακριβής. Σε ελκύει ο κόσμος των αριθμών, των επενδύσεων και της ανάλυσης κινδύνου.',
     icon: DollarSign,
-    color: 'text-pink-600',
-    gradient: 'from-pink-100 to-white dark:from-pink-900/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
-      { name: 'Λογιστικής και Χρηματοοικονομικής (ΟΠΑ)', city: 'Αθήνα', code: 347, base: '15.775' },
+      { name: 'Λογιστικής & Χρηματοοικονομικής (ΟΠΑ)', city: 'Αθήνα', code: 347, base: '15.775' },
       {
-        name: 'Χρηματοοικονομικής και Τραπεζικής Διοικητικής (ΠΑΠΕΙ)',
+        name: 'Χρηματοοικονομικής & Τραπεζικής (ΠΑΠΕΙ)',
         city: 'Πειραιάς',
         code: 155,
         base: '14.850',
@@ -217,52 +260,46 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
     ],
   },
   DIOIK: {
-    title: 'Οργάνωση, Διοίκηση & Marketing 🎯',
+    title: 'Οργάνωση, Διοίκηση & Marketing',
     description:
-      'Έχετε κλίση στην οργάνωση, τη διοίκηση, τη στρατηγική και την επικοινωνία. Σας ταιριάζουν ρόλοι που απαιτούν ηγετικές ικανότητες, διαπραγμάτευση και εστίαση στην ανάπτυξη της επιχείρησης και του προϊόντος.',
+      'Έχεις φυσική κλίση στην ηγεσία, στη στρατηγική και στο να κινητοποιείς ανθρώπους. Σε βλέπουμε ως manager ή επιχειρηματία.',
     icon: Briefcase,
-    color: 'text-rose-600',
-    gradient: 'from-rose-100 to-white dark:from-rose-900/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       {
-        name: 'Οργάνωσης και Διοίκησης Επιχειρήσεων (ΟΠΑ)',
+        name: 'Οργάνωσης & Διοίκησης Επιχειρήσεων (ΟΠΑ)',
         city: 'Αθήνα',
         code: 313,
         base: '17.425',
       },
-      { name: 'Μάρκετινγκ και Επικοινωνίας (ΟΠΑ)', city: 'Αθήνα', code: 314, base: '16.350' },
-      {
-        name: 'Διοίκησης Επιχειρήσεων και Οργανισμών (ΕΚΠΑ)',
-        city: 'Αθήνα',
-        code: 1005,
-        base: '16.220',
-      },
+      { name: 'Μάρκετινγκ & Επικοινωνίας (ΟΠΑ)', city: 'Αθήνα', code: 314, base: '16.350' },
+      { name: 'Διοίκησης Επιχειρήσεων (ΕΚΠΑ)', city: 'Αθήνα', code: 1005, base: '16.220' },
     ],
   },
   OIK: {
-    title: 'Θεωρητικά & Ακαδημαϊκά Οικονομικά 🎓',
+    title: 'Θεωρητικά & Ακαδημαϊκά Οικονομικά',
     description:
-      'Το ενδιαφέρον σας εστιάζεται στην ακαδημαϊκή ανάλυση, τη θεωρία και την εις βάθος κατανόηση του οικονομικού συστήματος. Σας ταιριάζουν ρόλοι που απαιτούν υψηλή μαθηματική/αναλυτική σκέψη για μοντελοποίηση.',
+      'Σε ελκύει η βαθιά ανάλυση, η θεωρία και η έρευνα. Ταιριάζεις σε ακαδημαϊκό ή ερευνητικό περιβάλλον.',
     icon: TrendingUp,
-    color: 'text-red-500',
-    gradient: 'from-red-100 to-white dark:from-red-900/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       { name: 'Οικονομικής Επιστήμης (ΟΠΑ)', city: 'Αθήνα', code: 312, base: '15.900' },
       { name: 'Οικονομικών Επιστημών (ΕΚΠΑ)', city: 'Αθήνα', code: 309, base: '13.896' },
       { name: 'Οικονομικών Επιστημών (ΑΠΘ)', city: 'Θεσσαλονίκη', code: 311, base: '13.240' },
-      { name: 'Δημόσιας Διοίκησης (ΠΑΝΤΕΙΟ)', city: 'Αθήνα', code: 124, base: '13.075' },
     ],
   },
   SERV: {
-    title: 'Διεθνείς Σπουδές, Τουρισμός & Ναυτιλία 🌎',
+    title: 'Διεθνείς Σπουδές, Τουρισμός & Ναυτιλία',
     description:
-      'Σας ελκύει το διεθνές περιβάλλον, οι διεθνείς σχέσεις και οι κλάδοι των υπηρεσιών, ειδικά ο Τουρισμός και η Ναυτιλία. Οι κορυφαίες επιλογές απαιτούν **Ειδικό Μάθημα Ξένης Γλώσσας**.',
+      'Σε ελκύει η επαφή με διαφορετικούς ανθρώπους, το διεθνές περιβάλλον και η δυναμική των υπηρεσιών.',
     icon: Globe,
-    color: 'text-purple-600',
-    gradient: 'from-purple-100 to-white dark:from-purple-900/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       {
-        name: 'Διεθνών και Ευρωπαϊκών Σπουδών (ΠΑΜΑΚ)',
+        name: 'Διεθνών & Ευρωπαϊκών Σπουδών (ΠΑΜΑΚ)',
         city: 'Θεσσαλονίκη',
         code: 161,
         base: '19.295',
@@ -276,7 +313,7 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
         note: 'Ειδ. Αγγλικά',
       },
       {
-        name: 'Διεθνών και Ευρωπαϊκών Σπουδών (ΠΑΠΕΙ)',
+        name: 'Διεθνών & Ευρωπαϊκών Σπουδών (ΠΑΠΕΙ)',
         city: 'Πειραιάς',
         code: 355,
         base: '18.990',
@@ -285,12 +322,12 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
     ],
   },
   PEDAGOGIKA: {
-    title: 'Παιδαγωγικές Σπουδές & Εκπαίδευση 🍎',
+    title: 'Παιδαγωγικές Σπουδές & Εκπαίδευση',
     description:
-      'Η κλίση σας είναι στην εκπαίδευση, τη φροντίδα και τη στήριξη των μαθητών. Σας ταιριάζουν σχολές που οδηγούν σε διδακτικούς ρόλους στην Πρωτοβάθμια Εκπαίδευση (Δάσκαλοι, Νηπιαγωγοί) ή την Ειδική Αγωγή.',
+      'Έχεις εξαιρετική ενσυναίσθηση, υπομονή και αληθινή επιθυμία να βοηθάς άλλους να μαθαίνουν.',
     icon: GraduationCap,
-    color: 'text-pink-400',
-    gradient: 'from-pink-50 to-white dark:from-pink-800/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       {
         name: 'Παιδαγωγικό Δημοτικής Εκπαίδευσης (ΕΚΠΑ)',
@@ -304,28 +341,23 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
         code: 140,
         base: '15.950',
       },
-      {
-        name: 'Εκπαίδευσης και Αγωγής στην Προσχολική Ηλικία (ΕΚΠΑ)',
-        city: 'Αθήνα',
-        code: 154,
-        base: '14.800',
-      },
+      { name: 'Εκπαίδευσης Προσχολικής Ηλικίας (ΕΚΠΑ)', city: 'Αθήνα', code: 154, base: '14.800' },
     ],
   },
   SOMATA: {
-    title: 'Σώματα Ασφαλείας & Φυσική Αγωγή 🛡️',
+    title: 'Σώματα Ασφαλείας & Φυσική Αγωγή',
     description:
-      'Έχετε ισχυρή κλίση προς τη δράση, την πειθαρχία και την προσφορά μέσα από Σώματα Ασφαλείας ή τον αθλητικό χώρο. ΠΡΟΣΟΧΗ: Αυτές οι σχολές απαιτούν **Αγωνίσματα** και **Υγειονομικές Εξετάσεις**.',
+      'Έχεις ψυχραιμία υπό πίεση, πειθαρχία και ισχυρή φυσική παρουσία. Απαιτούνται Αγωνίσματα & Υγειονομικές Εξετάσεις.',
     icon: Shield,
-    color: 'text-rose-400',
-    gradient: 'from-rose-50 to-white dark:from-rose-800/40 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       {
         name: 'ΣΣΑΣ Πληροφορικής / Οικονομικό',
         city: 'Θεσσαλονίκη',
-        code: 889, // Note: Simplified for TS, logic could handle dual codes
-        base: '18.240 - 17.735',
-        note: 'Αγων./Υγειονομικά',
+        code: 889,
+        base: '18.240–17.735',
+        note: 'Αγων./Υγειον.',
       },
       {
         name: 'Αξιωματικών Ελληνικής Αστυνομίας',
@@ -335,7 +367,7 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
         note: 'Αγων./Ψυχοτ.',
       },
       {
-        name: 'Επιστήμης Φυσικής Αγωγής & Αθλητισμού (ΕΚΠΑ)',
+        name: 'Επιστήμης Φυσικής Αγωγής (ΕΚΠΑ)',
         city: 'Αθήνα',
         code: 401,
         base: '17.399',
@@ -344,22 +376,22 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
     ],
   },
   TEXNES: {
-    title: 'Τέχνες, Design & Μουσική 🎨',
+    title: 'Τέχνες, Design & Μουσική',
     description:
-      'Η δημιουργικότητα και η καλλιτεχνική σας έκφραση είναι υψηλές προτεραιότητες. Σας ταιριάζουν σχολές που απαιτούν ταλέντο και εξέταση σε **Ειδικά Μαθήματα** (Σχέδιο, Μουσική).',
+      'Η δημιουργικότητα είναι ο τρόπος που σκέφτεσαι. Ταιριάζεις σε σχολές που απαιτούν Ειδικά Μαθήματα.',
     icon: Palette,
-    color: 'text-fuchsia-700',
-    gradient: 'from-fuchsia-200 to-white dark:from-fuchsia-900/50 dark:to-gray-900',
+    color: CATEGORY_ACCENT,
+    gradient: CATEGORY_GRADIENT,
     schools: [
       {
-        name: 'Μουσικής Επιστήμης και Τέχνης (ΠΑΜΑΚ)',
+        name: 'Μουσικής Επιστήμης & Τέχνης (ΠΑΜΑΚ)',
         city: 'Θεσσαλονίκη',
         code: 409,
         base: '15.600',
         note: 'Ειδ. Μουσικής',
       },
       {
-        name: 'Γραφιστικής και Οπτικής Επικοινωνίας (ΠΑΔΑ)',
+        name: 'Γραφιστικής & Οπτικής Επικοινωνίας (ΠΑΔΑ)',
         city: 'Αιγάλεω',
         code: 674,
         base: '13.745',
@@ -370,254 +402,606 @@ const RESULTS_MAPPING: Record<CategoryKey, CategoryData> = {
   },
 };
 
-// ═══════════════════════════════════════════════════════════════
-// 🏗️ MAIN COMPONENT
-// ═══════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'prosanatolismos_v3';
+const ALL_IDS = Object.keys(QUESTIONS).map(Number);
+const RANK_LABELS = ['1η κλίση', '2η κλίση', '3η κλίση'];
 
+// ─────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────
 const Prosanatolismospage: React.FC = () => {
-  // Answers state: key is question ID (string from Object.keys), value is score
-  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [answers, setAnswers] = useState<Record<number, number>>({});
   const [results, setResults] = useState<CalculationResult | null>(null);
-  const [error, setError] = useState<string>('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isCalc, setIsCalc] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(false);
+  const [sectionIdx, setSectionIdx] = useState(0);
+  const isMounted = useRef(true);
+  /** Κύλιση προς τα αποτελέσματα μόνο μετά «Υπολογισμός» ή φόρτωση αποθηκευμένου — όχι σε κάθε re-render. */
+  const resultsAnchorRef = useRef<HTMLElement | null>(null);
+  const sectionNavRef = useRef<HTMLDivElement | null>(null);
+  const scrollResultsAfterUpdate = useRef<'off' | 'calculate' | 'hydrate'>('off');
 
-  const allQuestions = Object.keys(QUESTIONS);
-  const questionsPerColumn = Math.ceil(allQuestions.length / 2);
-  const column1Questions = allQuestions.slice(0, questionsPerColumn);
-  const column2Questions = allQuestions.slice(questionsPerColumn);
+  const scrollSectionNav = useCallback((direction: -1 | 1) => {
+    sectionNavRef.current?.scrollBy({ left: direction * 220, behavior: 'smooth' });
+  }, []);
 
-  const handleChange = (questionId: string, score: number | string) => {
-    setAnswers((prevAnswers) => ({
-      ...prevAnswers,
-      [questionId]: typeof score === 'string' ? parseInt(score, 10) : score,
-    }));
-    setError('');
-  };
+  const totalAnswered = ALL_IDS.filter((id) => answers[id] !== undefined).length;
+  const totalQuestions = ALL_IDS.length;
+  const progress = Math.round((totalAnswered / totalQuestions) * 100);
+  const currentSection = SECTIONS[sectionIdx];
 
-  const calculateResults = () => {
-    // 1. Έλεγχος αν απαντήθηκαν όλες οι ερωτήσεις
-    if (
-      Object.keys(answers).length !== allQuestions.length ||
-      allQuestions.some((qId) => answers[qId] === undefined || isNaN(answers[qId]))
-    ) {
-      setError('Παρακαλώ απαντήστε και στις 45 ερωτήσεις για να δείτε τα αποτελέσματα.');
-      setResults(null);
-      return;
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      if (s) {
+        const p = JSON.parse(s);
+        if (p && typeof p === 'object' && !Array.isArray(p)) {
+          const norm = normalizeAnswersMap(p as Record<string, unknown>);
+          if (Object.keys(norm).length > 0) setAnswers(norm);
+        }
+      }
+    } catch {
+      /* silent */
     }
+  }, []);
 
-    // 2. Υπολογισμός συνολικών σκορ ανά κατηγορία
-    const initialScores: Record<CategoryKey, number> = {
-      INFO: 0,
-      FIN: 0,
-      DIOIK: 0,
-      OIK: 0,
-      SERV: 0,
-      PEDAGOGIKA: 0,
-      SOMATA: 0,
-      TEXNES: 0,
+  useEffect(() => {
+    if (Object.keys(answers).length > 0)
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(answers));
+      } catch {
+        /* silent */
+      }
+  }, [answers]);
+
+  useEffect(() => {
+    if (!results) return;
+    const mode = scrollResultsAfterUpdate.current;
+    if (mode === 'off') return;
+    scrollResultsAfterUpdate.current = 'off';
+    const frame = requestAnimationFrame(() => {
+      resultsAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [results]);
+
+  useEffect(() => {
+    const nav = sectionNavRef.current;
+    if (!nav) return;
+    const active = nav.querySelector<HTMLElement>(`[data-section-idx="${sectionIdx}"]`);
+    active?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [sectionIdx]);
+
+  useEffect(() => {
+    const loadLatestSavedResult = async () => {
+      if (Object.keys(answers).length > 0) return;
+
+      setIsHydrating(true);
+      try {
+        const response = await apiFetch<{ found: boolean; result?: SavedResultApiShape }>(
+          `${getBackendUrl()}/api/career-orientation/result`,
+          {
+            method: 'GET',
+            timeoutMs: 8000,
+            retries: 1,
+            dedupeKey: 'career-orientation-result:public',
+          }
+        );
+
+        if (!response.found || !response.result) return;
+
+        const restoredAnswers = normalizeAnswersMap(
+          (response.result.answers ?? {}) as Record<string, unknown>
+        );
+
+        if (Object.keys(restoredAnswers).length > 0 && isMounted.current) {
+          scrollResultsAfterUpdate.current = 'hydrate';
+          setAnswers(restoredAnswers);
+          // If backend payload is partial, compute safely from answers.
+          setResults(computeCareerOrientationResults(restoredAnswers));
+          setSuccess('Φορτώθηκε το τελευταίο αποθηκευμένο αποτέλεσμα.');
+          setTimeout(() => {
+            if (isMounted.current) setSuccess('');
+          }, 4500);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        if (isMounted.current) setIsHydrating(false);
+      }
     };
 
-    const finalScores = allQuestions.reduce((acc, qId) => {
-      const score = answers[qId];
-      // Convert qId to number for MATRIX lookup
-      const numId = parseInt(qId, 10);
-      const weights = SCORE_MATRIX[numId];
+    loadLatestSavedResult();
+  }, [answers]);
 
-      if (weights) {
-        acc.INFO += score * weights[0];
-        acc.FIN += score * weights[1];
-        acc.DIOIK += score * weights[2];
-        acc.OIK += score * weights[3];
-        acc.SERV += score * weights[4];
-        acc.PEDAGOGIKA += score * weights[5];
-        acc.SOMATA += score * weights[6];
-        acc.TEXNES += score * weights[7];
-      }
-
-      return acc;
-    }, initialScores);
-
-    let maxScore = -1;
-
-    // Explicitly cast to entries of CategoryKey and number
-    const scoresArray = Object.entries(finalScores) as [CategoryKey, number][];
-
-    for (const [, score] of scoresArray) {
-      if (score > maxScore) {
-        maxScore = score;
-      }
-    }
-
-    const tiedCategories = scoresArray
-      .filter(([, score]) => score === maxScore)
-      .map(([category]) => category);
-
-    const sortedScores = scoresArray
-      .map(([category, score]) => ({ category, score }))
-      .sort((a, b) => b.score - a.score);
-
-    setResults({
-      finalScores,
-      topCategory: sortedScores[0].category,
-      tiedCategories,
-      sortedScores,
-    });
+  const handleChange = useCallback((qId: number, score: number) => {
+    if (score < 1 || score > 5) return;
+    setAnswers((prev) => ({ ...prev, [qId]: score }));
     setError('');
+  }, []);
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const handleReset = useCallback(() => {
+    if (!window.confirm('Διαγραφή όλων των απαντήσεων;')) return;
+    setAnswers({});
+    setResults(null);
+    setError('');
+    setSuccess('');
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* silent */
+    }
+  }, []);
+
+  const saveToBackend = useCallback(
+    async (calc: CalculationResult) => {
+      setIsSaving(true);
+      try {
+        await apiFetch<{ message: string }>(`${getBackendUrl()}/api/career-orientation/submit`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            answers,
+            results: {
+              final_scores: calc.finalScores,
+              top_category: calc.topCategory,
+              sorted_scores: calc.sortedScores.map((x) => ({
+                category: x.category,
+                score: x.rawScore,
+                pct: x.displayPct,
+              })),
+            },
+          }),
+          timeoutMs: 10000,
+          retries: 1,
+        });
+        if (isMounted.current) {
+          setSuccess('Αποθηκεύτηκε επιτυχώς.');
+          setTimeout(() => {
+            if (isMounted.current) setSuccess('');
+          }, 4000);
+        }
+      } catch (e) {
+        console.error(e);
+        if (isMounted.current) {
+          setError(
+            'Αποθηκεύτηκε τοπικά, αλλά απέτυχε η online αποθήκευση. Δοκιμάστε ξανά αργότερα.'
+          );
+        }
+      } finally {
+        if (isMounted.current) setIsSaving(false);
+      }
+    },
+    [answers]
+  );
+
+  const handleCalculate = useCallback(async () => {
+    const missing = ALL_IDS.filter((id) => answers[id] === undefined).length;
+    if (missing > 0) {
+      setError(`Λείπουν ${missing} απαντήσεις από τις ${totalQuestions}.`);
+      return;
+    }
+    setIsCalc(true);
+    setError('');
+    try {
+      const calc = computeCareerOrientationResults(answers);
+      if (isMounted.current) {
+        scrollResultsAfterUpdate.current = 'calculate';
+        setResults(calc);
+        void saveToBackend(calc);
+      }
+    } catch (e) {
+      console.error(e);
+      if (isMounted.current) setError('Σφάλμα υπολογισμού. Δοκιμάστε ξανά.');
+    } finally {
+      if (isMounted.current) setIsCalc(false);
+    }
+  }, [answers, saveToBackend, totalQuestions]);
+
+  const sectionDone = (sec: Section) =>
+    sec.questions.filter((id) => answers[id] !== undefined).length;
+  const sectionFull = (sec: Section) => sectionDone(sec) === sec.questions.length;
 
   return (
-    <div className="max-w-6xl mx-auto p-4 md:p-8 bg-white dark:bg-gray-900 min-h-screen">
-      <header className="text-center mb-10 border-b pb-5 border-gray-200 dark:border-gray-700">
-        <h1 className="text-5xl font-extrabold text-gray-900 dark:text-white mb-3 flex items-center justify-center">
-          <div className="w-10 h-10 mr-4 text-rose-600" /> {/* Rose Accent */}
-          Επαγγελματικός Προσανατολισμός 4ο Πεδίo
-        </h1>
-        <p className="text-xl text-gray-600 dark:text-gray-400">
-          Ανακαλύψτε ποια από τις 8 εξειδικεύσεις σας ταιριάζει περισσότερο βάσει των 45 ερωτήσεων.
-        </p>
+    <motion.div
+      className="min-h-screen bg-[#ff97b2] dark:bg-[#2d1c48] text-gray-900 dark:text-gray-100 transition-colors duration-500"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
+      {/* Hero */}
+      <header className="border-b border-[#f07f97]/35 dark:border-white/10 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-md">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 sm:py-12 text-center">
+          <PageMenuIcon
+            icon="prosanatolismos"
+            wrapperClassName="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#ff97b2]/15 dark:bg-white/10 mb-3"
+            className="w-9 h-9"
+          />
+          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-[#faf5ef] tracking-tight">
+            Επαγγελματικός Προσανατολισμός
+          </h1>
+          <p className="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-300 max-w-xl mx-auto leading-relaxed">
+            50 ερωτήσεις προσωπικότητας · 8 κατηγορίες σπουδών
+          </p>
+
+          <div className="max-w-md mx-auto mt-6">
+            <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-2 font-semibold">
+              <span>
+                {totalAnswered}/{totalQuestions} απαντήσεις
+              </span>
+              <div className="flex items-center gap-2">
+                <span>{progress}%</span>
+                {totalAnswered > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleReset}
+                    title="Επαναφορά"
+                    className="p-1 rounded-lg bg-[#f07f97]/10 hover:bg-[#f07f97]/20 dark:bg-white/10 dark:hover:bg-white/15 text-[#f07f97] dark:text-[#ff97b2] transition-colors"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="w-full bg-[#f07f97]/15 dark:bg-white/10 rounded-full h-2 overflow-hidden">
+              <motion.div
+                className="h-full bg-[#f07f97] rounded-full"
+                animate={{ width: `${progress}%` }}
+                transition={{ duration: 0.35, ease: 'easeOut' }}
+              />
+            </div>
+          </div>
+        </div>
       </header>
 
-      {/* Ενότητα Αποτελεσμάτων */}
-      {results && (
-        <div className="mb-12 p-8 rounded-2xl bg-rose-50 dark:bg-gray-800 border border-rose-200 dark:border-rose-800 shadow-2xl">
-          <h2 className="text-3xl font-bold text-rose-700 dark:text-rose-300 mb-5 text-center">
-            🏆 Τα Κορυφαία Αποτελέσματά Σας
-          </h2>
-          <p className="text-xl text-gray-800 dark:text-gray-200 mb-8 text-center font-extrabold">
-            {results.tiedCategories.length === 1
-              ? `Η κυρίαρχη επαγγελματική σας κλίση είναι: ${RESULTS_MAPPING[results.topCategory].title}`
-              : `Υπάρχει ισοπαλία ανάμεσα σε περισσότερες κατευθύνσεις. Η υψηλότερη βαθμολογία σας είναι: ${results.tiedCategories.map((cat) => RESULTS_MAPPING[cat].title.split(' ')[0]).join(', ')}.`}
-          </p>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {results.sortedScores
-              .slice(0, Math.max(results.tiedCategories.length, 3))
-              .map((item) => (
-                <ResultCard
-                  key={item.category}
-                  category={item.category}
-                  currentScore={item.score}
-                  results={results}
-                />
-              ))}
+      {isHydrating && (
+        <div className="max-w-3xl mx-auto px-4 pt-4">
+          <div className="inline-flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 bg-white/90 dark:bg-[#3a2658]/90 px-3 py-2 rounded-xl border border-[#f07f97]/20">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#f07f97]" />
+            Ανάκτηση τελευταίου αποθηκευμένου αποτελέσματος…
           </div>
         </div>
       )}
 
-      {/* Κουίζ - Φόρμα Ερωτήσεων */}
-      <div className="bg-white dark:bg-gray-900 p-6 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700">
-        <p className="text-lg text-gray-700 dark:text-gray-300 mb-8 font-extrabold">
-          Επιλέξτε τον βαθμό συμφωνίας (1 έως 5) για κάθε δήλωση.
-          <span className="block font-normal text-sm text-gray-500 mt-1">
-            1: Διαφωνώ απόλυτα / 3: Ουδέτερο / 5: Συμφωνώ απόλυτα
-          </span>
-        </p>
-        <div className="grid lg:grid-cols-2 gap-x-10 gap-y-6">
-          {/* Στήλη 1 */}
-          <div>
-            {column1Questions.map((qId) => (
-              <QuestionBlock
-                key={qId}
-                qId={qId}
-                question={QUESTIONS[parseInt(qId, 10)]}
-                selectedScore={answers[qId]}
-                onChange={handleChange}
-              />
-            ))}
+      {/* Section nav */}
+      <div className="sticky top-20 z-20 bg-white/95 dark:bg-[#3a2658]/95 backdrop-blur-lg shadow-sm">
+        <div className="max-w-3xl mx-auto px-3 sm:px-4 py-3">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => scrollSectionNav(-1)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 shrink-0 p-2 rounded-xl border border-[#f07f97]/25 dark:border-white/15 bg-white dark:bg-[#2d1c48] text-[#f07f97] dark:text-[#ff97b2] hover:bg-[#fff5f8] dark:hover:bg-white/5 transition-colors touch-manipulation shadow-sm"
+              aria-label="Κύλιση ενότητων αριστερά"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <div
+              ref={sectionNavRef}
+              className="scrollbar-none flex gap-2 overflow-x-auto mx-11 sm:mx-12 scroll-smooth"
+            >
+              {SECTIONS.map((sec, idx) => {
+                const Icon = sec.icon;
+                const done = sectionFull(sec);
+                const active = sectionIdx === idx;
+                return (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    data-section-idx={idx}
+                    onClick={() => setSectionIdx(idx)}
+                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap border transition-all shrink-0 ${
+                      active
+                        ? 'bg-[#f07f97] text-white border-[#f07f97] shadow-sm'
+                        : done
+                          ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                          : 'bg-white dark:bg-[#2d1c48] text-gray-600 dark:text-gray-300 border-[#f07f97]/20 dark:border-white/10 hover:border-[#f07f97]/40'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {sec.title}
+                    {done && !active ? (
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                    ) : !done && !active ? (
+                      <span className="text-[10px] font-semibold opacity-60">
+                        {sectionDone(sec)}/{sec.questions.length}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => scrollSectionNav(1)}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 shrink-0 p-2 rounded-xl border border-[#f07f97]/25 dark:border-white/15 bg-white dark:bg-[#2d1c48] text-[#f07f97] dark:text-[#ff97b2] hover:bg-[#fff5f8] dark:hover:bg-white/5 transition-colors touch-manipulation shadow-sm"
+              aria-label="Κύλιση ενότητων δεξιά"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
-          {/* Στήλη 2 */}
-          <div>
-            {column2Questions.map((qId) => (
-              <QuestionBlock
-                key={qId}
-                qId={qId}
-                question={QUESTIONS[parseInt(qId, 10)]}
-                selectedScore={answers[qId]}
-                onChange={handleChange}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* Submit Button & Error */}
-        <div className="mt-12 text-center">
-          {error && (
-            <p className="text-red-600 bg-red-100 dark:bg-red-900/40 border border-red-500 p-4 rounded-lg mb-4 font-bold transition-all duration-500">
-              🚨 {error}
-            </p>
-          )}
-          <button
-            onClick={calculateResults}
-            className="px-10 py-4 bg-rose-600 text-white font-extrabold text-xl rounded-xl shadow-lg hover:bg-rose-700 transition duration-300 transform hover:scale-105 active:scale-95 tracking-wide"
-          >
-            Υπολογισμός Επαγγελματικής Κατεύθυνσης
-          </button>
         </div>
       </div>
 
-      
-    
-    </div>
+      <main className="max-w-3xl mx-auto px-4 py-8 sm:py-10 pb-16">
+        {/* ΑΠΟΤΕΛΕΣΜΑΤΑ */}
+        <AnimatePresence>
+          {results && (
+            <motion.section
+              ref={resultsAnchorRef}
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="mb-10 rounded-2xl border border-[#f07f97]/25 dark:border-white/15 bg-white dark:bg-[#3a2658] shadow-lg overflow-hidden scroll-mt-28"
+            >
+              <div className="px-5 sm:px-6 py-4 sm:py-5 border-b border-[#f07f97]/15 dark:border-white/10 bg-[#fff5f8] dark:bg-[#2d1c48]/80">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <h2 className="text-lg sm:text-xl font-black text-gray-900 dark:text-white">
+                    Τα αποτελέσματά σου
+                  </h2>
+                  {isSaving && (
+                    <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0 text-[#f07f97]" />
+                      Αποθήκευση online…
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+                  Το % δείχνει τη σχετική προτίμησή σου ανάμεσα στις 8 κατηγορίες (η 1η κλίση = 100%).
+                  Η κατάταξη βασίζεται στο πόσο ξεχωρίζει κάθε κατηγορία από το ουδέτερο προφίλ σου.
+                </p>
+              </div>
+
+              <div className="p-5 sm:p-6 space-y-6">
+                <div className="grid sm:grid-cols-3 gap-4">
+                  {results.sortedScores.slice(0, 3).map((item, rank) => (
+                    <ResultCard
+                      key={item.category}
+                      category={item.category}
+                      displayPct={item.displayPct}
+                      rank={rank + 1}
+                    />
+                  ))}
+                </div>
+
+                <div className="rounded-xl border border-[#f07f97]/15 dark:border-white/10 bg-[#fff5f8]/60 dark:bg-[#2d1c48]/50 p-4 sm:p-5">
+                  <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#f07f97] dark:text-[#ff97b2] mb-4">
+                    Πλήρης κατάταξη
+                  </p>
+                  <div className="space-y-3">
+                    {results.sortedScores.map((item, idx) => {
+                      const data = RESULTS[item.category];
+                      const Icon = data.icon;
+                      return (
+                        <div key={item.category} className="flex items-center gap-3">
+                          <span className="text-[11px] font-bold text-gray-400 w-5 text-right shrink-0 tabular-nums">
+                            {idx + 1}
+                          </span>
+                          <Icon className={`w-4 h-4 shrink-0 ${data.color}`} />
+                          <span className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-200 flex-1 min-w-0 truncate">
+                            {data.title}
+                          </span>
+                          <div className="hidden sm:block flex-[1.5] max-w-[140px] bg-white dark:bg-[#3a2658] rounded-full h-2 overflow-hidden border border-[#f07f97]/10">
+                            <motion.div
+                              className={`h-full rounded-full bg-gradient-to-r ${BAR_MAP[item.category]}`}
+                              initial={{ width: 0 }}
+                              animate={{ width: `${item.displayPct}%` }}
+                              transition={{ duration: 0.6, delay: idx * 0.05, ease: 'easeOut' }}
+                            />
+                          </div>
+                          <span className="text-xs font-black text-[#f07f97] dark:text-[#ff97b2] w-10 text-right shrink-0 tabular-nums">
+                            {item.displayPct}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </motion.section>
+          )}
+        </AnimatePresence>
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={currentSection.id}
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: 0.2 }}
+            className="rounded-2xl border border-[#f07f97]/25 dark:border-white/15 bg-white dark:bg-[#3a2658] shadow-md overflow-hidden"
+          >
+            <div className={`flex items-center gap-3 px-4 sm:px-5 py-4 ${currentSection.bg}`}>
+              {React.createElement(currentSection.icon, {
+                className: `w-5 h-5 shrink-0 ${currentSection.color}`,
+              })}
+              <div className="min-w-0">
+                <h2 className={`font-black text-base sm:text-lg ${currentSection.color}`}>
+                  {currentSection.title}
+                </h2>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Ενότητα {sectionIdx + 1} από {SECTIONS.length}
+                </p>
+              </div>
+              <span className="ml-auto text-xs font-bold text-gray-500 dark:text-gray-400 shrink-0 tabular-nums">
+                {sectionDone(currentSection)}/{currentSection.questions.length}
+              </span>
+            </div>
+
+            <div className="px-4 sm:px-5 py-5 sm:py-6">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-5 px-1 leading-relaxed">
+                Απάντα αυθόρμητα.{' '}
+                <span className="font-semibold text-gray-700 dark:text-gray-300">
+                  1 = Διαφωνώ απόλυτα · 5 = Συμφωνώ απόλυτα
+                </span>
+              </p>
+
+              <div className="space-y-3">
+                {currentSection.questions.map((id) => (
+                  <QuestionBlock
+                    key={id}
+                    qId={id}
+                    question={QUESTIONS[id]}
+                    selectedScore={answers[id]}
+                    onChange={handleChange}
+                  />
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center mt-6 pt-5 border-t border-[#f07f97]/15 dark:border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setSectionIdx((i) => Math.max(0, i - 1))}
+                  disabled={sectionIdx === 0}
+                  className="flex items-center gap-1 px-3 sm:px-4 py-2.5 text-sm font-semibold text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4" /> Προηγούμενη
+                </button>
+
+                {sectionIdx < SECTIONS.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => setSectionIdx((i) => i + 1)}
+                    className="flex items-center gap-1 px-5 py-2.5 text-sm font-bold bg-[#f07f97] text-white rounded-xl hover:bg-[#e06d88] transition-colors shadow-sm"
+                  >
+                    Επόμενη <ChevronRight className="w-4 h-4" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCalculate}
+                    disabled={totalAnswered < totalQuestions || isCalc}
+                    className={`flex items-center gap-1.5 px-5 sm:px-6 py-2.5 text-sm font-black rounded-xl transition-all ${
+                      totalAnswered < totalQuestions || isCalc
+                        ? 'bg-gray-200 dark:bg-[#2d1c48] text-gray-400 cursor-not-allowed'
+                        : 'bg-[#f07f97] text-white hover:bg-[#e06d88] shadow-md'
+                    }`}
+                  >
+                    {isCalc ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Υπολογισμός…
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" /> Δες τα αποτελέσματά σου
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+
+        <div className="mt-6 flex flex-col items-center gap-2">
+          <AnimatePresence>
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="inline-flex items-center gap-2 text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 px-4 py-2.5 rounded-xl text-sm font-semibold"
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                {success}
+              </motion.div>
+            )}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                className="inline-flex items-center gap-2 text-red-800 dark:text-red-200 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 px-4 py-2.5 rounded-xl text-sm font-semibold"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {error}
+              </motion.div>
+            )}
+          </AnimatePresence>
+          {totalAnswered < totalQuestions && (
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              Απομένουν{' '}
+              <strong className="text-[#f07f97] dark:text-[#ff97b2]">
+                {totalQuestions - totalAnswered}
+              </strong>{' '}
+              ερωτήσεις
+            </p>
+          )}
+        </div>
+      </main>
+    </motion.div>
   );
 };
 
-// ═══════════════════════════════════════════════════════════════
-// 🧩 CHILD COMPONENTS
-// ═══════════════════════════════════════════════════════════════
-
-interface ResultCardProps {
-  category: CategoryKey;
-  currentScore: number;
-  results: CalculationResult;
-}
-
-const ResultCard: React.FC<ResultCardProps> = ({ category, currentScore }) => {
-  const data = RESULTS_MAPPING[category];
-  const IconComponent = data.icon;
-  const maxPossibleScore = RECALCULATED_MAX_SCORES[category];
-  const percentage = Math.min(100, Math.round((currentScore / maxPossibleScore) * 100));
-
+// ─────────────────────────────────────────────────────────────
+// RESULT CARD
+// ─────────────────────────────────────────────────────────────
+const ResultCard: React.FC<{ category: CategoryKey; displayPct: number; rank: number }> = ({
+  category,
+  displayPct,
+  rank,
+}) => {
+  const data = RESULTS[category];
+  const Icon = data.icon;
+  const border = BORDER_MAP[category];
+  const bar = BAR_MAP[category];
   return (
     <div
-      className={`p-6 border-t-8 border-${data.color.split('-')[1]}-600 rounded-lg shadow-2xl bg-gradient-to-br ${data.gradient} transition transform hover:scale-[1.02] duration-300`}
+      className={`p-4 sm:p-5 rounded-2xl border border-[#f07f97]/15 dark:border-white/10 border-t-4 ${border} bg-gradient-to-br ${data.gradient}`}
     >
-      <div className="flex items-center mb-4">
-        <IconComponent className={`w-8 h-8 mr-3 ${data.color} flex-shrink-0`} />
-        <h3 className={`text-xl font-extrabold ${data.color}`}>{data.title}</h3>
-      </div>
-
-      <div className="mb-4">
-        <div className="w-full bg-gray-300 rounded-full h-3 dark:bg-gray-700 shadow-inner">
-          <div
-            className={`h-3 rounded-full bg-gradient-to-r from-pink-400 to-rose-600`}
-            style={{ width: `${percentage}%` }}
-          ></div>
+      <p className="text-[10px] font-black uppercase tracking-[0.14em] text-[#f07f97] dark:text-[#ff97b2] mb-3">
+        {RANK_LABELS[rank - 1]}
+      </p>
+      <div className="flex items-start gap-2.5 mb-4">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#fff5f8] dark:bg-[#2d1c48] border border-[#f07f97]/15">
+          <Icon className={`w-4 h-4 ${data.color}`} />
         </div>
-        <p className="text-sm text-gray-700 dark:text-gray-300 font-medium mt-1">
-          Ποσοστό Ενδιαφέροντος: {percentage}% (Σκορ: {currentScore} / {maxPossibleScore})
-        </p>
+        <h3 className="text-sm font-black text-gray-900 dark:text-white leading-snug">{data.title}</h3>
       </div>
-
-      <p className="text-gray-800 dark:text-gray-200 mb-5 text-sm">{data.description}</p>
-
-      <div className="mt-4 border-t pt-4 border-gray-200 dark:border-gray-700">
-        <p className="font-extrabold text-lg text-gray-900 dark:text-white mb-2">
-          Κορυφαίες Προτάσεις Σχολών:
+      <div className="mb-4">
+        <div className="flex justify-between text-xs mb-1.5">
+          <span className="text-gray-500 dark:text-gray-400">Ταύτιση</span>
+          <span className={`font-black tabular-nums ${data.color}`}>{displayPct}%</span>
+        </div>
+        <div className="w-full bg-white dark:bg-[#2d1c48] rounded-full h-2 overflow-hidden border border-[#f07f97]/10">
+          <motion.div
+            className={`h-full rounded-full bg-gradient-to-r ${bar}`}
+            initial={{ width: 0 }}
+            animate={{ width: `${displayPct}%` }}
+            transition={{ duration: 0.7, ease: 'easeOut' }}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-gray-600 dark:text-gray-300 mb-4 leading-relaxed">{data.description}</p>
+      <div className="border-t border-[#f07f97]/15 dark:border-white/10 pt-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.12em] text-gray-500 dark:text-gray-400 mb-2">
+          Προτεινόμενες σχολές
         </p>
-        <ul className="space-y-3">
-          {data.schools.map((school, index) => (
+        <ul className="space-y-2">
+          {data.schools.map((s) => (
             <li
-              key={index}
-              className="flex items-start text-sm bg-white dark:bg-gray-800 p-3 rounded-md shadow-inner"
+              key={s.code}
+              className="flex items-start gap-2 bg-white/80 dark:bg-[#2d1c48]/80 p-2.5 rounded-xl border border-[#f07f97]/10 dark:border-white/5"
             >
-              <CheckCircle className={`w-4 h-4 mt-1 mr-2 ${data.color}`} />
-              <div>
-                <p className="font-semibold text-gray-900 dark:text-white">
-                  {school.name} ({school.city})
+              <CheckCircle className={`w-3.5 h-3.5 mt-0.5 ${data.color} shrink-0`} />
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-gray-900 dark:text-white leading-snug">
+                  {s.name}
                 </p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
-                  Κωδ.: {school.code} | Βάση 2025: {school.base} Μόρια{' '}
-                  {school.note ? `(${school.note})` : ''}
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  {s.city} · Κωδ. {s.code} · Βάση {s.base}
+                  {s.note ? ` · ${s.note}` : ''}
                 </p>
               </div>
             </li>
@@ -628,58 +1012,43 @@ const ResultCard: React.FC<ResultCardProps> = ({ category, currentScore }) => {
   );
 };
 
-interface QuestionBlockProps {
-  qId: string;
+// ─────────────────────────────────────────────────────────────
+// QUESTION BLOCK
+// ─────────────────────────────────────────────────────────────
+const QuestionBlock: React.FC<{
+  qId: number;
   question: string;
   selectedScore?: number;
-  onChange: (qId: string, score: number) => void;
-}
-
-const QuestionBlock: React.FC<QuestionBlockProps> = ({
-  qId,
-  question,
-  selectedScore,
-  onChange,
-}) => {
-  const scoreOptions = [1, 2, 3, 4, 5];
-
-  return (
-    <div className="mb-6 p-5 border border-gray-300 dark:border-gray-700 rounded-xl bg-gray-50 dark:bg-gray-800 shadow-md hover:shadow-lg transition duration-300">
-      <label className="block text-gray-800 dark:text-gray-200 font-semibold mb-3 text-md">
-        <span className="text-rose-600 dark:text-rose-400 font-extrabold mr-2">{qId}.</span>{' '}
-        {question}
-      </label>
-      <div className="flex justify-between space-x-2 bg-white dark:bg-gray-900 p-2 rounded-lg shadow-inner">
-        {scoreOptions.map((score) => (
-          <div
-            key={score}
-            className="flex flex-col items-center cursor-pointer transition duration-150 ease-in-out hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded-md"
-            onClick={() => onChange(qId, score)}
-          >
-            <input
-              type="radio"
-              id={`q${qId}-${score}`}
-              name={`question-${qId}`}
-              value={score}
-              checked={selectedScore === score}
-              onChange={(e) => onChange(qId, parseInt(e.target.value, 10))}
-              className="form-radio h-5 w-5 text-rose-600 dark:bg-gray-700 dark:border-gray-600 focus:ring-rose-500"
-            />
-            <label
-              htmlFor={`q${qId}-${score}`}
-              className={`text-xs font-bold mt-1 ${
-                selectedScore === score
-                  ? 'text-rose-600 dark:text-rose-400'
-                  : 'text-gray-500 dark:text-gray-400'
-              }`}
-            >
-              {score}
-            </label>
-          </div>
-        ))}
-      </div>
+  onChange: (id: number, score: number) => void;
+}> = ({ qId, question, selectedScore, onChange }) => (
+  <div className="p-4 rounded-xl border border-[#f07f97]/15 dark:border-white/10 bg-[#fff5f8]/40 dark:bg-[#2d1c48]/40 hover:border-[#f07f97]/30 transition-colors">
+    <p className="text-sm text-gray-800 dark:text-gray-100 mb-3.5 leading-relaxed">
+      <span className="text-[#f07f97] dark:text-[#ff97b2] font-black mr-2 text-xs tabular-nums">
+        {qId}.
+      </span>
+      {question}
+    </p>
+    <div className="flex items-center gap-1 sm:gap-1.5">
+      <span className="text-[10px] text-gray-400 w-10 hidden sm:block leading-tight">Όχι</span>
+      {[1, 2, 3, 4, 5].map((score) => (
+        <button
+          key={score}
+          type="button"
+          onClick={() => onChange(qId, score)}
+          className={`flex-1 h-10 rounded-xl text-sm font-black transition-all ${
+            selectedScore === score
+              ? 'bg-[#f07f97] text-white shadow-sm ring-2 ring-[#f07f97]/30 dark:ring-[#ff97b2]/30'
+              : 'bg-white dark:bg-[#3a2658] text-gray-600 dark:text-gray-300 border border-[#f07f97]/10 dark:border-white/10 hover:border-[#f07f97]/40 hover:text-[#f07f97] dark:hover:text-[#ff97b2]'
+          }`}
+        >
+          {score}
+        </button>
+      ))}
+      <span className="text-[10px] text-gray-400 w-10 text-right hidden sm:block leading-tight">
+        Ναι
+      </span>
     </div>
-  );
-};
+  </div>
+);
 
 export default Prosanatolismospage;

@@ -1,0 +1,29 @@
+# Netlify: frontend SPA build and canonical domain redirects.
+[build]
+  base = "frontend"
+  command = "npm run build"
+  # Must match vite.config.ts outDir ('build'), not 'dist' — wrong folder = blank/broken site on Netlify.
+  publish = "build"
+
+[[redirects]]
+  from = "https://technotesgr.com/*"
+  to = "https://www.technotes.gr/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "https://www.technotesgr.com/*"
+  to = "https://www.technotes.gr/:splat"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://technotesgrr.onrender.com/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

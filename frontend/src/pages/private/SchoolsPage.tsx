@@ -1,323 +1,299 @@
 import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Search, Laptop, Coins, Landmark, BarChart3, Ship, ShieldCheck, 
-  Globe, Trophy, Music, Palette, Users, GraduationCap, BookOpen,
-  MapPin, TrendingUp, Info, ChevronDown
+import { useSearchParams } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import {
+  Search,
+  MapPin,
+  Info,
+  ChevronDown,
+  BookOpen,
+  TrendingUp,
+  Copy,
+  Check,
+  GitCompare,
 } from 'lucide-react';
+import {
+  MenuIconImg,
+  MENU_ICONS,
+  FUTURE_CAREERS_ICON,
+  SCHOOL_CATEGORY_ICON_BY_NAME,
+} from '@/data/menuIcons';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { SchoolCourseComparePanel } from '@/components/schools/SchoolCourseComparePanel';
+import { SchoolCurriculumModal } from '@/components/schools/SchoolCurriculumModal';
+import { CareersModal } from '@/components/schools/CareersModal';
+import { SCHOOL_CURRICULA, canOpenSchoolCurriculum } from '@/data/schoolCurricula';
 
-// --- Types ---
-interface School {
-  id: string;
-  name: string;
-  uni: string;
-  city: string;
-  points: number;
-  ebe: string;
-  category: string;
-  requirements?: string;
-}
+
+import { ALL_SCHOOLS, type School } from '@/data/schools';
+import { IT_CAREERS } from '@/data/itCareers';
+import { ECONOMICS_CAREERS } from '@/data/economicsCareers';
+import { BUSINESS_ADMINISTRATION_CAREERS } from '@/data/businessAdministrationCareers';
+import { INDUSTRY_CAREERS } from '@/data/industryCareers';
+import { ACCOUNTING_FINANCE_CAREERS } from '@/data/accountingFinanceCareers';
+import { MARKETING_CAREERS } from '@/data/marketingCareers';
+import { MARITIME_TOURISM_CAREERS } from '@/data/maritimeTourismCareers';
+import { SPORTS_CAREERS } from '@/data/sportsCareers';
+import { STATISTICS_CAREERS } from '@/data/statisticsCareers';
+import { MANAGEMENT_SCIENCE_CAREERS } from '@/data/managementScienceCareers';
+import { INTERNATIONAL_EUROPEAN_CAREERS } from '@/data/internationalEuropeanCareers';
+import { PEDAGOGY_CAREERS } from '@/data/pedagogyCareers';
+import { ARTS_CAREERS } from '@/data/artsCareers';
+import type { Career } from '@/data/careers';
+import { formatEbeDisplay, formatMoriaDisplay } from '@/utils/schoolBasisMatching';
+
+export type { School };
+export { ALL_SCHOOLS };
 
 // --- Configuration ---
-const CATEGORIES: Record<string, { icon: React.ReactNode, color: string }> = {
-  "Πληροφορική": { icon: <Laptop size={20} />, color: "bg-blue-100 text-blue-600" },
-  "Βιομηχανία & Προϊόν": { icon: <Laptop size={20} />, color: "bg-blue-100 text-blue-600" },
-  "Οικονομικά": { icon: <Coins size={20} />, color: "bg-emerald-100 text-emerald-600" },
-  "Λογιστική & Χρηματοοικονομικά": { icon: <BarChart3 size={20} />, color: "bg-teal-100 text-teal-600" },
-  "Διοίκηση Επιχειρήσεων": { icon: <Landmark size={20} />, color: "bg-indigo-100 text-indigo-600" },
-  "Marketing & Επικοινωνία": { icon: <TrendingUp size={20} />, color: "bg-pink-100 text-pink-600" },
-  "Διοικητικής Επιστήμης": { icon: <GraduationCap size={20} />, color: "bg-orange-100 text-orange-600" },
-  "Διεθνών & Ευρωπαϊκών": { icon: <Globe size={20} />, color: "bg-sky-100 text-sky-600" },
-  "Στατιστική": { icon: <BookOpen size={20} />, color: "bg-gray-100 text-gray-600" },
-  "Σώματα Ασφαλείας & Στρατιωτικές": { icon: <ShieldCheck size={20} />, color: "bg-slate-100 text-slate-600" },
-  "Ναυτιλιακά & Τουρισμός": { icon: <Ship size={20} />, color: "bg-cyan-100 text-cyan-600" },
-  "Παιδαγωγικά": { icon: <GraduationCap size={20} />, color: "bg-orange-100 text-orange-600" },
-  "Ανθρωπιστικά & Κοινωνικά": { icon: <Users size={20} />, color: "bg-rose-100 text-rose-600" },
-  "Μουσική & Πολιτισμός": { icon: <Music size={20} />, color: "bg-purple-100 text-purple-600" },
-  "Τέχνες": { icon: <BookOpen size={20} />, color: "bg-gray-100 text-gray-600" },
-  "Αθλητισμός": { icon: <Trophy size={20} />, color: "bg-amber-100 text-amber-600" },
-  "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)": { icon: <BookOpen size={20} />, color: "bg-gray-100 text-gray-600" },
-  "Σχέδιο Μόδας": { icon: <BookOpen size={20} />, color: "bg-gray-100 text-gray-600" },
+const CATEGORIES: Record<string, { iconSrc: string; color: string }> = {
+  Πληροφορική: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Πληροφορική'], color: 'bg-blue-100 text-blue-600' },
+  'Ενέργεια & Μηχανική': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Ενέργεια & Μηχανική'], color: 'bg-amber-100 text-amber-700' },
+  'Βιομηχανία & Προϊόν': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Βιομηχανία & Προϊόν'], color: 'bg-blue-100 text-blue-600' },
+  Βιομηχανία: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Βιομηχανία'], color: 'bg-blue-100 text-blue-600' },
+  Οικονομικά: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Οικονομικά'], color: 'bg-emerald-100 text-emerald-600' },
+  'Λογιστική & Χρηματοοικονομικά': {
+    iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Λογιστική & Χρηματοοικονομικά'],
+    color: 'bg-teal-100 text-teal-600',
+  },
+  'Διοίκηση Επιχειρήσεων': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Διοίκηση Επιχειρήσεων'], color: 'bg-indigo-100 text-indigo-600' },
+  'Marketing & Επικοινωνία': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Marketing & Επικοινωνία'], color: 'bg-coral-wash text-coral-accent' },
+  'Διοικητικής Επιστήμης': {
+    iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Διοικητικής Επιστήμης'],
+    color: 'bg-orange-100 text-orange-600',
+  },
+  'Διεθνών & Ευρωπαϊκών': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Διεθνών & Ευρωπαϊκών'], color: 'bg-sky-100 text-sky-600' },
+  Στατιστική: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Στατιστική'], color: 'bg-gray-100 text-gray-600' },
+  'Σώματα Ασφαλείας & Στρατιωτικές': {
+    iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Σώματα Ασφαλείας & Στρατιωτικές'],
+    color: 'bg-slate-100 text-slate-600',
+  },
+  'Ναυτιλιακά & Τουρισμός': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Ναυτιλιακά & Τουρισμός'], color: 'bg-cyan-100 text-cyan-600' },
+  Παιδαγωγικά: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Παιδαγωγικά'], color: 'bg-orange-100 text-orange-600' },
+  'Ανθρωπιστικά & Κοινωνικά': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Ανθρωπιστικά & Κοινωνικά'], color: 'bg-coral-light/30 text-coral-strong' },
+  'Μουσική & Πολιτισμός': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Μουσική & Πολιτισμός'], color: 'bg-purple-100 text-purple-600' },
+  Τέχνες: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Τέχνες'], color: 'bg-gray-100 text-gray-600' },
+  Αθλητισμός: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Αθλητισμός'], color: 'bg-amber-100 text-amber-600' },
+  'Άλλα (Γεωγραφία, Περιβάλλον κ.α.)': {
+    iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Άλλα (Γεωγραφία, Περιβάλλον κ.α.)'],
+    color: 'bg-gray-100 text-gray-600',
+  },
+  'Σχέδιο Μόδας': { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Σχέδιο Μόδας'], color: 'bg-gray-100 text-gray-600' },
+  Logistics: { iconSrc: SCHOOL_CATEGORY_ICON_BY_NAME['Logistics'], color: 'bg-teal-100 text-teal-600' },
 };
 
-// --- Full Data Array ---
-const ALL_SCHOOLS: School[] = [
-  // ΔΙΕΘΝΩΝ & ΕΥΡΩΠΑΪΚΩΝ
-  { id: "161", name: "Διεθνών και Ευρωπαϊκών Σπουδών", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 19295, ebe: "13.22", category: "Διεθνών & Ευρωπαϊκών", requirements: "Ξένη Γλώσσα" },
-  { id: "355", name: "Διεθνών και Ευρωπαϊκών Σπουδών", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 18990, ebe: "13.22", category: "Διεθνών & Ευρωπαϊκών", requirements: "Ξένη Γλώσσα" },
-  { id: "179", name: "Διεθνών και Ευρωπαϊκών Σπουδών", uni: "ΠΑΝΤΕΙΟ", city: "Αθήνα", points: 17040, ebe: "11.02", category: "Διεθνών & Ευρωπαϊκών", requirements: "Ξένη Γλώσσα" },
-    { id: "150", name: "Διεθνών και Ευρωπαϊκών Οικ. Σπουδών", uni: "ΟΠΑ", city: "Αθήνα", points: 15150, ebe: "12.60", category: "Διεθνών & Ευρωπαϊκών" },
-  { id: "1549", name: "Διεθνών και Ευρωπαϊκών Οικ. Σπουδών", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Κοζάνη", points: 8400, ebe: "8.40", category: "Διεθνών & Ευρωπαϊκών" },
+type CareersCategory =
+  | 'Πληροφορική'
+  | 'Οικονομικά'
+  | 'Διοίκηση Επιχειρήσεων'
+  | 'Βιομηχανία'
+  | 'Λογιστική & Χρηματοοικονομικά'
+  | 'Marketing & Επικοινωνία'
+  | 'Ναυτιλιακά & Τουρισμός'
+  | 'Αθλητισμός'
+  | 'Στατιστική'
+  | 'Διοικητικής Επιστήμης'
+  | 'Διεθνών & Ευρωπαϊκών'
+  | 'Παιδαγωγικά'
+  | 'Τέχνες';
 
-  // ΝΑΥΤΙΛΙΑΚΑ & ΤΟΥΡΙΣΜΟΣ
-  { id: "157", name: "Ναυτιλιακών Σπουδών", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 19210, ebe: "11.02", category: "Ναυτιλιακά & Τουρισμός", requirements: "Αγγλικά" },
-  { id: "670", name: "Διοίκησης Τουρισμού", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 15850, ebe: "13.22", category: "Ναυτιλιακά & Τουρισμός", requirements: "Ξένη Γλώσσα" },
-  { id: "375", name: "Τουριστικών Σπουδών", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 14785, ebe: "13.22", category: "Ναυτιλιακά & Τουρισμός", requirements: "Αγγλικά" },
-  { id: "1004", name: "Διαχείρισης Λιμένων και Ναυτιλίας", uni: "ΕΚΠΑ", city: "Ψαχνά", points: 12600, ebe: "12.60", category: "Ναυτιλιακά & Τουρισμός" },
-  { id: "1283", name: "Διοίκησης Τουρισμού", uni: "ΠΑΤΡΩΝ", city: "Πάτρα", points: 13275, ebe: "8.81", category: "Ναυτιλιακά & Τουρισμός", requirements: "Ξένη Γλώσσα" },
-  { id: "614", name: "Αστε Κρήτης (ΑΣΤΕΚ)", uni: "ΑΣΤΕ", city: "Αγ. Νικόλαος", points: 11706, ebe: "8.81", category: "Ναυτιλιακά & Τουρισμός", requirements: "Ξένη Γλώσσα" },
-  { id: "613", name: "Οικονομικής και Διοίκησης Τουρισμού", uni: "ΑΙΓΑΙΟΥ", city: "Χίος", points: 11550, ebe: "8.81", category: "Ναυτιλιακά & Τουρισμός", requirements: "Ξένη Γλώσσα" },
-  { id: "613", name: "Αστε Ρόδου (ΑΣΤΕΡ)", uni: "ΑΣΤΕ", city: "Ρόδος", points: 11312, ebe: "8.81", category: "Ναυτιλιακά & Τουρισμός", requirements: "Ξένη Γλώσσα" },
-  { id: "180", name: "Ναυτιλίας και Επιχειρηματικών Υπηρεσιών", uni: "ΑΙΓΑΙΟΥ", city: "Χίος", points: 9890, ebe: "10.50", category: "Ναυτιλιακά & Τουρισμός" },
-  
-  { id: "1455", name: "Τουρισμού", uni: "ΙΟΝΙΟ", city: "Κέρκυρα", points: 9820, ebe: "8.81", category: "Ναυτιλιακά & Τουρισμός", requirements: "Αγγλικά" },
-  { id: "818", name: "ΑΕΝ Σχολή Μηχανικών", uni: "ΑΕΝ", city: "Μη προσδιορισμένη", points: 8400, ebe: "8.40", category: "Ναυτιλιακά & Τουρισμός" },
-  { id: "817", name: "ΑΕΝ Σχολή Πλοιάρχων", uni: "ΑΕΝ", city: "Μη προσδιορισμένη", points: 8400, ebe: "8.40", category: "Ναυτιλιακά & Τουρισμός" },
+const CATEGORY_CAREERS: Record<
+  CareersCategory,
+  { careers: Career[]; blurb: string; subtitle: string; columnTitle: string }
+> = {
+  Πληροφορική: {
+    careers: IT_CAREERS,
+    blurb: 'επαγγέλματα πληροφορικής',
+    subtitle: 'Επαγγέλματα πληροφορικής και σύντομες περιγραφές',
+    columnTitle: 'Επάγγελμα',
+  },
+  Οικονομικά: {
+    careers: ECONOMICS_CAREERS,
+    blurb: 'καριέρες οικονομικών',
+    subtitle: 'Καριέρες οικονομικών και σύντομες περιγραφές',
+    columnTitle: 'Καριέρα',
+  },
+  'Διοίκηση Επιχειρήσεων': {
+    careers: BUSINESS_ADMINISTRATION_CAREERS,
+    blurb: 'καριέρες διοίκησης επιχειρήσεων',
+    subtitle: 'Καριέρες διοίκησης επιχειρήσεων και σύντομες περιγραφές',
+    columnTitle: 'Καριέρα',
+  },
+  Βιομηχανία: {
+    careers: INDUSTRY_CAREERS,
+    blurb: 'καριέρες βιομηχανικής διοίκησης',
+    subtitle: 'Καριέρες βιομηχανίας και βιομηχανικής διοίκησης',
+    columnTitle: 'Καριέρα',
+  },
+  'Λογιστική & Χρηματοοικονομικά': {
+    careers: ACCOUNTING_FINANCE_CAREERS,
+    blurb: 'καριέρες λογιστικής και χρηματοοικονομικών',
+    subtitle: 'Καριέρες λογιστικής και χρηματοοικονομικών',
+    columnTitle: 'Καριέρα',
+  },
+  'Marketing & Επικοινωνία': {
+    careers: MARKETING_CAREERS,
+    blurb: 'καριέρες marketing και επικοινωνίας',
+    subtitle: 'Καριέρες marketing και επικοινωνίας',
+    columnTitle: 'Καριέρα',
+  },
+  'Ναυτιλιακά & Τουρισμός': {
+    careers: MARITIME_TOURISM_CAREERS,
+    blurb: 'καριέρες ναυτιλίας και τουρισμού',
+    subtitle: 'Καριέρες ναυτιλίας και τουρισμού',
+    columnTitle: 'Καριέρα',
+  },
+  Αθλητισμός: {
+    careers: SPORTS_CAREERS,
+    blurb: 'καριέρες φυσικής αγωγής και αθλητισμού',
+    subtitle: 'Καριέρες επιστήμης φυσικής αγωγής και αθλητισμού',
+    columnTitle: 'Καριέρα',
+  },
+  Στατιστική: {
+    careers: STATISTICS_CAREERS,
+    blurb: 'καριέρες στατιστικής',
+    subtitle: 'Καριέρες στατιστικής και ανάλυσης δεδομένων',
+    columnTitle: 'Καριέρα',
+  },
+  'Διοικητικής Επιστήμης': {
+    careers: MANAGEMENT_SCIENCE_CAREERS,
+    blurb: 'καριέρες διοικητικής επιστήμης',
+    subtitle: 'Καριέρες διοικητικής επιστήμης και τεχνολογίας',
+    columnTitle: 'Καριέρα',
+  },
+  'Διεθνών & Ευρωπαϊκών': {
+    careers: INTERNATIONAL_EUROPEAN_CAREERS,
+    blurb: 'καριέρες διεθνών και ευρωπαϊκών σπουδών',
+    subtitle: 'Καριέρες διεθνών και ευρωπαϊκών σπουδών',
+    columnTitle: 'Καριέρα',
+  },
+  Παιδαγωγικά: {
+    careers: PEDAGOGY_CAREERS,
+    blurb: 'καριέρες παιδαγωγικών σπουδών',
+    subtitle: 'Καριέρες παιδαγωγικών και εκπαιδευτικών σπουδών',
+    columnTitle: 'Καριέρα',
+  },
+  Τέχνες: {
+    careers: ARTS_CAREERS,
+    blurb: 'καριέρες σχεδιασμού και τεχνών',
+    subtitle: 'Εσωτερική Αρχιτεκτονική, Γραφιστική & Οπτική Επικοινωνία και σύντομες περιγραφές',
+    columnTitle: 'Καριέρα',
+  },
+};
 
-  // ΔΙΟΙΚΗΣΗ ΕΠΙΧΕΙΡΗΣΕΩΝ
-  { id: "240", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΟΠΑ", city: "Αθήνα", points: 18400, ebe: "12.60", category: "Διοικητικής Επιστήμης" },
-  { id: "313", name: "Οργάνωσης και Διοίκησης Επιχειρήσεων", uni: "ΟΠΑ", city: "Αθήνα", points: 17425, ebe: "12.60", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "316", name: "Οργάνωσης και Διοίκησης Επιχειρήσεων", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 16620, ebe: "12.60", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1005", name: "Διοίκησης Επιχειρήσεων και Οργανισμών", uni: "ΕΚΠΑ", city: "Αθήνα", points: 16220, ebe: "12.60", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "322", name: "Οργάνωσης και Διοίκησης Επιχειρήσεων", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 15532, ebe: "12.60", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "575", name: "Διοίκησης Επιχειρήσεων", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 12920, ebe: "12.60", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "583", name: "Διοίκησης Οργανισμών, Marketing και Τουρισμού", uni: "ΔΙΠΑΕ", city: "Θεσσαλονίκη", points: 12170, ebe: "9.45", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1282", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΠΑΤΡΩΝ", city: "Πάτρα", points: 12150, ebe: "11.55", category: "Διοικητικής Επιστήμης" },
-  { id: "352", name: "Διοίκησης Επιχειρήσεων", uni: "ΠΑΤΡΩΝ", city: "Πάτρα", points: 11900, ebe: "11.55", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1518", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Τρίπολη", points: 10075, ebe: "9.45", category: "Διοικητικής Επιστήμης" },
-  { id: "1655", name: "Διοίκησης Επιχειρήσεων και Τουρισμού", uni: "ΕΛΜΕΠΑ", city: "Ηράκλειο", points: 10088, ebe: "10.50", category: "Ναυτιλιακά & Τουρισμός" },
-    { id: "591", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Τρίπολη", points: 10075, ebe: "9.45", category: "Διοικητικής Επιστήμης" },
-  { id: "1427", name: "Διοίκησης Επιχειρήσεων", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λάρισα", points: 9825, ebe: "9.45", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "580", name: "Διοίκησης Επιχειρήσεων", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Καλαμάτα", points: 7715, ebe: "8.40", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1603", name: "Διοίκησης Εφοδιαστικής Αλυσίδας", uni: "ΔΙΠΑΕ", city: "Κατερίνη", points: 9660, ebe: "8.40", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1607", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΔΠΘ", city: "Καβάλα", points: 9530, ebe: "8.40", category: "Διοικητικής Επιστήμης" },
-  { id: "1063", name: "Διοίκησης Γεωργικών Επιχειρήσεων", uni: "ΓΕΩΠΟΝΙΚΟ", city: "Θήβα", points: 9095, ebe: "9.45", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "1601", name: "Οργάνωσης και Διοίκησης Επιχειρήσεων", uni: "ΔΙΠΑΕ", city: "Σέρρες", points: 8950, ebe: "8.40", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1544", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Κοζάνη", points: 8920, ebe: "8.40", category: "Διοικητικής Επιστήμης" },
-  { id: "1656", name: "Διοικητικής Επιστήμης και Τεχνολογίας", uni: "ΕΛΜΕΠΑ", city: "Αγ. Νικόλαος", points: 8875, ebe: "8.40", category: "Διοικητικής Επιστήμης" },
-  { id: "320", name: "Διοίκησης Επιχειρήσεων", uni: "ΑΙΓΑΙΟΥ", city: "Χίος", points: 8630, ebe: "8.40", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1546", name: "Οργάνωσης και Διοίκησης Επιχειρήσεων", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Γρεβενά", points: 7840, ebe: "8.40", category: "Διοίκηση Επιχειρήσεων" },
+const SchoolsPage: React.FC = () => {
+  const [search, setSearch] = useState('');
+  const [activeCity, setActiveCity] = useState('Όλες');
+  const [curriculumSchoolId, setCurriculumSchoolId] = useState<string | null>(null);
+  const [activeCareersCategory, setActiveCareersCategory] = useState<CareersCategory | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const isCompareView = searchParams.get('view') === 'compare';
+  const [compareSchoolAId, setCompareSchoolAId] = useState('');
+  const [compareSchoolBId, setCompareSchoolBId] = useState('');
 
-  //marketing
-  { id: "314", name: "Μάρκετινγκ και Επικοινωνίας", uni: "ΟΠΑ", city: "Αθήνα", points: 16350, ebe: "12.60", category: "Marketing & Επικοινωνία" },
-  { id: "1456", name: "Ψηφιακών Μέσων και Επικοινωνίας", uni: "ΙΟΝΙΟ", city: "Αργοστόλι", points: 8550, ebe: "8.40", category: "Marketing & Επικοινωνία" },
-  { id: "1551", name: "Επικοινωνίας και Ψηφιακών Μέσων", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Καστοριά", points: 11020, ebe: "9.48", category: "Marketing & Επικοινωνία", requirements: "Ξένη Γλώσσα" },
+  const setCompareView = (enabled: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (enabled) next.set('view', 'compare');
+    else next.delete('view');
+    setSearchParams(next, { replace: true });
+  };
 
+  const activeCurriculum = curriculumSchoolId
+    ? SCHOOL_CURRICULA[curriculumSchoolId]
+    : null;
 
-// ΠΛΗΡΟΦΟΡΙΚΗ
-  { id: "889", name: "Πληροφορικής (ΣΣΑΣ)", uni: "ΣΣΑΣ", city: "Θεσσαλονίκη", points: 18240, ebe: "12.60", category: "Πληροφορική" },
-  { id: "338", name: "Πληροφορικής", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 17720, ebe: "12.60", category: "Πληροφορική" },
-  { id: "333", name: "Πληροφορικής", uni: "ΟΠΑ", city: "Αθήνα", points: 17590, ebe: "12.60", category: "Πληροφορική" },
-  { id: "330", name: "Πληροφορικής και Τηλεπικοινωνιών", uni: "ΕΚΠΑ", city: "Αθήνα", points: 16955, ebe: "12.60", category: "Πληροφορική" },
-  { id: "339", name: "Πληροφορικής", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 16935, ebe: "12.60", category: "Πληροφορική" },
-  { id: "1211", name: "Εφαρμοσμένης Πληροφορικής (Επιστήμη και Τεχνολογία Υπολογιστών)", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 16915, ebe: "12.60", category: "Πληροφορική" },
-  { id: "1212", name: "Εφαρμοσμένης Πληροφορικής (Πληροφοριακά Συστήματα)", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 16705, ebe: "12.60", category: "Πληροφορική" },
-  { id: "412", name: "Πληροφορικής και Τηλεματικής", uni: "ΧΑΡΟΚΟΠΕΙΟ", city: "Αθήνα", points: 16320, ebe: "12.60", category: "Πληροφορική" },
-  { id: "262", name: "Ψηφιακών Συστημάτων", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 15940, ebe: "12.60", category: "Πληροφορική" },
-  { id: "216", name: "Επιστήμης Υπολογιστών", uni: "ΚΡΗΤΗΣ", city: "Ηράκλειο", points: 15646, ebe: "12.60", category: "Πληροφορική" },
-  { id: "390", name: "Μηχανικών Πληροφορικής και Υπολογιστών", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 15336, ebe: "12.60", category: "Πληροφορική" },
-  { id: "1625", name: "Μηχανικών Πληροφορικής & Ηλεκτρονικών Συστημάτων", uni: "ΔΙΠΑΕ", city: "Θεσσαλονίκη", points: 14740, ebe: "12.60", category: "Πληροφορική" },
-  { id: "1622", name: "Μηχανικών Πληροφορικής,Υπολογιστών & Τηλεπικοινωνιών", uni: "ΔΙΠΑΕ", city: "Σέρρες", points: 13450, ebe: "10.50", category: "Πληροφορική" },
-  { id: "1630", name: "Πληροφορικής", uni: "ΔΠΘ", city: "Καβάλα", points: 12880, ebe: "11.55", category: "Πληροφορική" },
-  { id: "369", name: "Πληροφορικής με Εφαρμογές στη Βιοϊατρική", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λαμία", points: 12515, ebe: "10.50", category: "Πληροφορική" },
-  { id: "98", name: "Πληροφορικής και Τηλεπικοινωνιών", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Τρίπολη", points: 11550, ebe: "11.55", category: "Πληροφορική" },
-  { id: "99", name: "Πληροφορικής και Τηλεπικοινωνιών", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λαμία", points: 10500, ebe: "10.50", category: "Πληροφορική" },
-  { id: "1439", name: "Ψηφιακών Συστημάτων", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λάρισα", points: 10445, ebe: "10.50", category: "Πληροφορική" },
-  { id: "1554", name: "Πληροφορικής", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Καστοριά", points: 10340, ebe: "10.50", category: "Πληροφορική" },
-  { id: "1662", name: "Ηλεκτρονικών Μηχανικών", uni: "ΕΛΜΕΠΑ", city: "Χανιά", points: 10071, ebe: "8.40", category: "Πληροφορική" },
-  { id: "344", name: "Μηχανικών Πληρ/κών & Επικ. Συστημάτων", uni: "ΑΙΓΑΙΟΥ", city: "Σάμος", points: 9660, ebe: "8.40", category: "Πληροφορική" },
-  { id: "1519", name: "Ψηφιακών Συστημάτων", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Σπάρτη", points: 9040, ebe: "8.40", category: "Πληροφορική" },
-  { id: "1436", name: "Συστημάτων Ενέργειας", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λάρισα", points: 8990, ebe: "8.40", category: "Πληροφορική" },
-  { id: "1250", name: "Πληροφορικής και Τηλεπικοινωνιών", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Άρτα", points: 8911, ebe: "8.40", category: "Πληροφορική" },
-  { id: "366", name: "Πληροφορικής", uni: "ΙΟΝΙΟ", city: "Κέρκυρα", points: 8640, ebe: "8.40", category: "Πληροφορική" },
-  
-  //βιομηχανια
-
-  { id: "560", name: "Βιομηχανικής Διοίκησης και Τεχνολογίας", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 13465, ebe: "12.6", category: "Βιομηχανία" },
-  {id : "629", name :"Μηχανικών Παραγωγής και Διοίκησης", uni : "ΔΙΠΑΕ", city : "Θεσσαλονική", points : 12585, ebe : "10.50",category : "Βιομηχανία"},
-   { id: "230", name: "Μηχανικών Παραγωγής και Διοίκησης", uni: "Πολυτεχνείο Κρήτης", city: "Χανιά", points: 12290, ebe: "12.60", category: "Βιομηχανία" },
-  { id: "389", name: "Μηχανικών Βιομηχανικής Σχεδίασης και Παραγωγής", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 12032, ebe: "12.39", category: "Βιομηχανία" },
-  { id: "224", name: "Μηχανικών Παραγωγής και Διοίκησης", uni: "ΔΠΘ", city: "Ξάνθη", points: 11590, ebe: "11.55", category: "Βιομηχανία" },
-  { id: "238", name: "Μηχανικών Σχεδίασης Προϊόντων και Συστημάτων", uni: "ΑΙΓΑΙΟΥ", city: "Σύρος", points: 10330, ebe: "10.50", category: "Βιομηχανία" },
-  { id: "1542", name: "Μηχανικών Σχεδίασης Προϊόντων και Συστημάτων", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Κοζάνη", points: 9225, ebe: "8.92", category: "Βιομηχανία" },
-  { id: "1008", name: "Τεχνολογιών Ψηφιακής Βιομηχανίας", uni: "ΕΚΠΑ", city: "Ψαχνά", points: 9830, ebe: "8.92", category: "Βιομηχανία" },
-  // ΟΙΚΟΝΟΜΙΚΑ
-  {
-  id: "867", name: "Οικονομικό (ΣΣΑΣ)", uni: "ΣΣΑΣ", city: "Θεσσαλονίκη", points: 17735, ebe: "12.60", category: "Οικονομικά", requirements: "Επιπλέον προϋποθέσεις"
-},
-  { id: "312", name: "Οικονομικής Επιστήμης", uni: "ΟΠΑ", city: "Αθήνα", points: 15900, ebe: "12.60", category: "Οικονομικά" },
-  { id: "315", name: "Οικονομικής Επιστήμης", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 15100, ebe: "12.60", category: "Οικονομικά" },
-  { id: "317", name: "Οικονομικών Επιστημών", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 14460, ebe: "12.60", category: "Οικονομικά" },
-  { id: "309", name: "Οικονομικών Επιστημών", uni: "ΕΚΠΑ", city: "Αθήνα", points: 13896, ebe: "12.60", category: "Οικονομικά" },
-  { id: "311", name: "Οικονομικών Επιστημών", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 13240, ebe: "12.60", category: "Οικονομικά" },
-  { id: "152", name: "Οικονομικής & Περιφερειακής Ανάπτυξης", uni: "ΠΑΝΤΕΙΟ", city: "Αθήνα", points: 12675, ebe: "12.60", category: "Οικονομικά" },
-  { id: "646", name: "Οικονομίας και Βιώσιμης Ανάπτυξης", uni: "ΧΑΡΟΚΟΠΕΙΟ", city: "Αθήνα", points: 12556, ebe: "11.55", category: "Οικονομικά" },
-  { id: "319", name: "Οικονομικών Επιστημών", uni: "ΠΑΤΡΩΝ", city: "Πάτρα", points: 12426, ebe: "12.60", category: "Οικονομικά" },
-  { id: "326", name: "Αγροτικής Οικονομίας και Ανάπτυξης", uni: "ΓΕΩΠΟΝΙΚΟ", city: "Αθήνα", points: 12310, ebe: "8.92", category: "Οικονομικά" },
-  { id: "350", name: "Οικονομικών Επιστημών", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Βόλος", points: 11851, ebe: "10.50", category: "Οικονομικά" },
-  { id: "345", name: "Οικονομικών Επιστημών", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Ιωάννινα", points: 11450, ebe: "10.50", category: "Οικονομικά" },
-  { id: "321", name: "Οικονομικών Επιστημών", uni: "ΚΡΗΤΗΣ", city: "Ρέθυμνο", points: 10415, ebe: "11.02", category: "Οικονομικά" },
-  { id: "1548", name: "Οικονομικών Επιστημών", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Καστοριά", points: 10330, ebe: "8.40", category: "Οικονομικά" },
-  { id: "361", name: "Οικονομικών Επιστημών", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Τρίπολη", points: 10030, ebe: "10.50", category: "Οικονομικά" },
-  { id: "97", name: "Οικονομικών Επιστημών", uni: "ΔΠΘ", city: "Κομοτηνή", points: 9696, ebe: "9.45", category: "Οικονομικά" },
-  { id: "1602", name: "Οικονομικών Επιστημών", uni: "ΔΙΠΑΕ", city: "Σέρρες", points: 9555, ebe: "8.40", category: "Οικονομικά" },
-  { id: "222", name: "Μηχανικών Οικονομίας και Διοίκησης", uni: "ΑΙΓΑΙΟΥ", city: "Χίος", points: 9050, ebe: "8.40", category: "Διοίκηση Επιχειρήσεων" },
-  { id: "1064", name: "Περιφερειακής και Οικονομικής Ανάπτυξης", uni: "ΓΕΩΠΟΝΙΚΟ", city: "Άμφισσα", points: 7040, ebe: "8.40", category: "Οικονομικά" },
-    
-  // ΛΟΓΙΣΤΙΚΗ & ΧΡΗΜΑΤΟΟΙΚΟΝΟΜΙΚΑ
-  { id: "347", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΟΠΑ", city: "Αθήνα", points: 15775, ebe: "12.60", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "155", name: "Χρηματοοικονομικής & Τραπεζικής Διοικητικής", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 14850, ebe: "12.60", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "337", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 13525, ebe: "12.60", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "617", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 12765, ebe: "12.60", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1606", name: "Λογιστικής και Πληροφοριακών Συστημάτων", uni: "ΔΙΠΑΕ", city: "Θεσσαλονίκη", points: 12360, ebe: "10.50", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1513", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Καλαμάτα", points: 9250, ebe: "8.40", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1430", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λάρισα", points: 8867, ebe: "8.40", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1654", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΕΛΜΕΠΑ", city: "Ηράκλειο", points: 8780, ebe: "9.45", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1604", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΔΠΘ", city: "Καβάλα", points: 8300, ebe: "8.40", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1244", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Πρέβεζα", points: 7890, ebe: "8.40", category: "Λογιστική & Χρηματοοικονομικά" },
-  { id: "1545", name: "Λογιστικής και Χρηματοοικονομικής", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Κοζάνη", points: 7310, ebe: "8.40", category: "Λογιστική & Χρηματοοικονομικά" },
-
-  //στατιστική
-  {id: "703", name: "Στατιστικής", uni: "ΟΠΑ", city: "Αθήνα", points: 14440, ebe: "12.6", category: "Στατιστική" },
-  {id: "702", name: "Στατιστικής και Ασφαλιστικής Επιστήμης", uni: "ΠΑΠΕΙ", city: "Πειραιάς", points: 14440, ebe: "12.6", category: "Στατιστική" },
-  {id: "700", name: "Στατιστικής και Αναλογιστικών-Χρηματοοικονομικών Μαθηματικών", uni: "ΑΙΓΑΙΟΥ", city: "Σάμος", points: 8550, ebe: "8.40", category: "Στατιστική" },
-  {id: "701", name: "Στατιστικής", uni: "Δυτικής Μακεδονίας", city: "Γρεβενά", points: 7280, ebe: "8.40", category: "Στατιστική" },
-    
-
-
-
-
-  // ΣΩΜΑΤΑ ΑΣΦΑΛΕΙΑΣ & ΣΤΡΑΤΙΩΤΙΚΕΣ
-  { id: "869", name: "Αξιωματικών Ελληνικής Αστυνομίας", uni: "ΑΣΤΥΝΟΜΙΑ", city: "Μη προσδιορισμένη", points: 17590, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "887", name: "Ικάρων (ΣΙ) Εφοδιαστών", uni: "ΑΕΡΟΠΟΡΙΑ", city: "Μη προσδιορισμένη", points: 17465, ebe: "12.60", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "877", name: "Αξιωματικών Πυροσβεστικής", uni: "ΠΥΡΟΣΒΕΣΤΙΚΗ", city: "Μη προσδιορισμένη", points: 17460, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "872", name: "Αξιωματικών ΕΛ.ΑΣ. (για Αστυνομικούς)", uni: "ΑΣΤΥΝΟΜΙΑ", city: "Μη προσδιορισμένη", points: 17370, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "886", name: "Ικάρων (ΣΙ) Διοικητικών", uni: "ΑΕΡΟΠΟΡΙΑ", city: "Μη προσδιορισμένη", points: 17260, ebe: "12.60", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "881", name: "Σχολή Δοκίμων Σημαιοφόρων Λ.Σ.", uni: "ΛΙΜΕΝΙΚΟ", city: "Μη προσδιορισμένη", points: 16650, ebe: "9.45", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "880", name: "ΣΜΥΑ - Κατ. Διοικ. & Εφοδ. Υποστήριξης", uni: "ΑΕΡΟΠΟΡΙΑ", city: "Μη προσδιορισμένη", points: 16030, ebe: "10.50", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "876", name: "Πυροσβεστών (για Πολίτες)", uni: "ΠΥΡΟΣΒΕΣΤΙΚΗ", city: "Μη προσδιορισμένη", points: 14460, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "882", name: "Σχολή Δοκίμων Λιμενοφυλάκων", uni: "ΛΙΜΕΝΙΚΟ", city: "Μη προσδιορισμένη", points: 13970, ebe: "9.45", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "863", name: "ΣΜΥ - Σώματα", uni: "ΣΤΡΑΤΟΣ", city: "Μη προσδιορισμένη", points: 13080, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "870", name: "Αστυφυλάκων (για Πολίτες)", uni: "ΑΣΤΥΝΟΜΙΑ", city: "Μη προσδιορισμένη", points: 11710, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "871", name: "Αξιωματικών Πυροσβεστικής (Πυροσβέστες)", uni: "ΠΥΡΟΣΒΕΣΤΙΚΗ", city: "Μη προσδιορισμένη", points: 9940, ebe: "8.40", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-  { id: "864", name: "ΣΜΥΝ (Μονίμων Υπαξιωματικών Ναυτικού)", uni: "ΝΑΥΤΙΚΟ", city: "Μη προσδιορισμένη", points: 8940, ebe: "9.45", category: "Σώματα Ασφαλείας & Στρατιωτικές" },
-
-  // ΜΟΥΣΙΚΗ & ΠΟΛΙΤΙΣΜΟΣ
-  { id: "409", name: "Μουσικής Επιστήμης και Τέχνης", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 15600, ebe: "14.86", category: "Μουσική & Πολιτισμός", requirements: "Μουσικά Μαθήματα" },
-  { id: "408", name: "Μουσικών Σπουδών", uni: "ΕΚΠΑ", city: "Αθήνα", points: 15050, ebe: "11.15", category: "Μουσική & Πολιτισμός", requirements: "Μουσικά Μαθήματα" },
-  { id: "406", name: "Μουσικών Σπουδών", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 14590, ebe: "9.91", category: "Μουσική & Πολιτισμός", requirements: "Μουσικά Μαθήματα" },
-  { id: "407", name: "Μουσικών Σπουδών", uni: "ΙΟΝΙΟ", city: "Κέρκυρα", points: 13440, ebe: "9.91", category: "Μουσική & Πολιτισμός", requirements: "Μουσικά Μαθήματα" },
-  { id: "163", name: "Κινηματογράφου", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 13125, ebe: "12.60", category: "Μουσική & Πολιτισμός" },
-   { id: "641", name: "Μουσικών Σπουδών", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Άρτα", points: 11660, ebe: "11.15", category: "Μουσική & Πολιτισμός", requirements: "Μουσικά Μαθήματα" },
-  { id: "677", name: "Φωτογραφίας & Οπτικοακουστικών Τεχνών", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 11540, ebe: "10.50", category: "Μουσική & Πολιτισμός" },
- { id: "610", name: "Θεάτρου", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 11425, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-  { id: "715", name: "Ψηφιακών Τεχνών και Κινηματογράφου", uni: "ΕΚΠΑ", city: "Ψαχνά", points: 10520, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-  { id: "1435", name: "Πολιτισμού & Δημιουργικών Μέσων και Βιομηχανιών", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Βόλος", points: 9410, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-  { id: "367", name: "Τεχνών Ήχου και Εικόνας", uni: "ΙΟΝΙΟ", city: "Κέρκυρα", points: 9410, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-  { id: "1517", name: "Παραστατικών και Ψηφιακών Τεχνών", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Ναύπλιο", points: 9200, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-  { id: "1664", name: "Μουσικής Τεχνολογίας & Ακουστικής", uni: "ΕΛΜΕΠΑ", city: "Ρέθυμνο", points: 8400, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-  { id: "354", name: "Πολιτισμικής Τεχνολογίας & Επικοινωνίας", uni: "ΑΙΓΑΙΟΥ", city: "Μυτιλήνη", points: 8355, ebe: "8.40", category: "Μουσική & Πολιτισμός" },
-
-  // ΑΘΛΗΤΙΣΜΟΣ
-  { id: "401", name: "Επιστήμης Φυσικής Αγωγής και Αθλητισμού", uni: "ΕΚΠΑ", city: "Αθήνα", points: 17399, ebe: "8.55", category: "Αθλητισμός", requirements: "Αγωνίσματα" },
-  { id: "403", name: "Επιστήμης Φυσικής Αγωγής και Αθλητισμού", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 17161, ebe: "8.55", category: "Αθλητισμός", requirements: "Αγωνίσματα" },
-  { id: "405", name: "Επιστήμης Φυσικής Αγωγής και Αθλητισμού", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Τρίκαλα", points: 15134, ebe: "10.69", category: "Αθλητισμός", requirements: "Αγωνίσματα" },
-  { id: "402", name: "Επιστήμης Φυσικής Αγωγής και Αθλητισμού", uni: "ΑΠΘ", city: "Σέρρες", points: 13729, ebe: "8.55", category: "Αθλητισμός", requirements: "Αγωνίσματα" },
-  { id: "404", name: "Επιστήμης Φυσικής Αγωγής και Αθλητισμού", uni: "ΔΠΘ", city: "Κομοτηνή", points: 13219, ebe: "8.55", category: "Αθλητισμός", requirements: "Αγωνίσματα" },
-   { id: "400", name: "Οργάνωσης και Διαχείρισης Αθλητισμού", uni: "ΠΕΛΟΠΟΝΝΗΣΟΥ", city: "Σπάρτη", points: 8940, ebe: "8.40", category: "Αθλητισμός" },
-  // ΠΑΙΔΑΓΩΓΙΚΑ
-  { id: "128", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΕΚΠΑ", city: "Αθήνα", points: 16250, ebe: "12.60", category: "Παιδαγωγικά" },
-  { id: "140", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 15950, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "164", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Βόλος", points: 15125, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "154", name: "Εκπαίδευσης και Αγωγής στην Προσχολική", uni: "ΕΚΠΑ", city: "Αθήνα", points: 14800, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "130", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Ιωάννινα", points: 14575, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "1286", name: "Επιστημών Εκπαίδευσης & Κοινωνικής Εργασίας", uni: "ΠΑΤΡΩΝ", city: "Πάτρα", points: 14422, ebe: "12.60", category: "Παιδαγωγικά" },
-  { id: "134", name: "Επιστημών Προσχολικής Αγωγής και Εκπαίδευσης", uni: "ΑΠΘ", city: "Θεσσαλονίκη", points: 13875, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "132", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΚΡΗΤΗΣ", city: "Ρέθυμνο", points: 13375, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "552", name:"Αγωγής και Φροντίδας στην Πρώιμη Παιδική Ηλικία", uni: "Παδά", city: "Αιγάλεω", points: 13120, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "178", name: "Παιδαγωγικό Ειδικής Αγωγής", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Βόλος", points: 13050, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "142", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΔΠΘ", city: "Αλεξ/πολη", points: 13000, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "136", name: "Επιστημών Της Εκπαίδευσης & Της Αγωγής Στην Προσχολική Ηλικία", uni: "ΠΑΤΡΩΝ", city: "Πάτρα", points: 13000, ebe: "9.45", category: "Παιδαγωγικά" },
-  { id: "334", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Φλώρινα", points: 12860, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "166", name: "Παιδαγωγικό Προσχολικής Εκπαίδευσης", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Βόλος", points: 12425, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "156", name: "Παιδαγωγικό Νηπιαγωγών", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Ιωάννινα", points: 11905, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "143", name: "Παιδαγωγικό Δημοτικής Εκπαίδευσης", uni: "ΑΙΓΑΙΟΥ", city: "Ρόδος", points: 11875, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "158", name: "Παιδαγωγικό Προσχολικής Εκπαίδευσης", uni: "ΚΡΗΤΗΣ", city: "Ρέθυμνο", points: 11600, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "1610", name:"Αγωγής και Φροντίδας στην Πρώιμη Ηλικία", uni: "ΔΙΠΑΕ", city: "Θεσσαλονίκη", points: 11250, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "341", name: "Παιδαγωγικό Νηπιαγωγών", uni: "ΔΥΤ. ΜΑΚΕΔΟΝΙΑΣ", city: "Φλώρινα", points: 10975, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "1241", name: "Αγωγής και Φροντίδας στην Πρώιμη Ηλικία", uni: "ΙΩΑΝΝΙΝΩΝ", city: "Ιωάννινα", points: 10914, ebe: "10.50", category: "Παιδαγωγικά" },
-  { id: "160", name: "Επιστημών της Εκπαίδευσης στην Προσχολική Ηλικία", uni: "ΔΠΘ", city: "Αλεξ/πολη", points: 10750, ebe: "8.40", category: "Παιδαγωγικά" },
-  { id: "162", name: "Επιστημών της Προσχολικής Αγωγής και Εκπαιδευτικού Σχεδιασμού", uni: "ΑΙΓΑΙΟΥ", city: "Ρόδος", points: 10150, ebe: "8.40", category: "Παιδαγωγικά" },
-  
-  // ΑΝΘΡΩΠΙΣΤΙΚΑ & ΚΟΙΝΩΝΙΚΑ
-  { id: "124", name: "Δημόσιας Διοίκησης", uni: "ΠΑΝΤΕΙΟ", city: "Αθήνα", points: 13075, ebe: "12.60", category: "Ανθρωπιστικά & Κοινωνικά" },
-  { id: "159", name: "Κοινωνικής Πολιτικής", uni: "ΠΑΝΤΕΙΟ", city: "Αθήνα", points: 12430, ebe: "8.40", category: "Ανθρωπιστικά & Κοινωνικά" },
-    { id: "176", name: "Βαλκανικών, Σλαβικών & Ανατολικών Σπουδών", uni: "ΠΑΜΑΚ", city: "Θεσσαλονίκη", points: 12240, ebe: "12.60", category: "Ανθρωπιστικά & Κοινωνικά" },
-  { id: "1302", name: "Κοινωνικής Πολιτικής", uni: "ΔΠΘ", city: "Κομοτηνή", points: 10820, ebe: "8.40", category: "Ανθρωπιστικά & Κοινωνικά" },
-  { id: "173", name: "Ιστορίας και Φιλοσοφίας της Επιστήμης", uni: "ΕΚΠΑ", city: "Αθήνα", points: 10810, ebe: "10.50", category: "Ανθρωπιστικά & Κοινωνικά" },
-  {id: "557", name: "Αρχειονομίας,Βιβλιοθηκονομίας και Συστημάτων Πληροφόρησης", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 10730, ebe: "9.45", category: "Ανθρωπιστικά & Κοινωνικά"},
-  { id: "181", name: "Μεσογειακών Σπουδών : Αρχαιολογία,Γλωσσολογία,Διεθνέις Σχέσεις", uni: "ΑΙΓΑΙΟΥ", city: "Ρόδος", points: 8798, ebe: "8.40", category: "Ανθρωπιστικά & Κοινωνικά" },
-  { id: "1609", name: "Βιβλιοθηκονομίας & Συστημάτων Πληροφόρησης", uni: "ΔΙΠΑΕ", city: "Θεσσαλονίκη", points: 9300, ebe: "8.40", category: "Ανθρωπιστικά & Κοινωνικά" },
-  { id: "1669", name: "Ανθρωπιστικών Σπουδών", uni: "ΔΠΘ", city: "Κομοτηνή", points: 8650, ebe: "8.40", category: "Ανθρωπιστικά & Κοινωνικά" },
-    { id: "1669", name: "Αρχειονομίας και Βιβλιοθηκονομίας", uni: "ΙΟΝΙΟ", city: "Κέρκυρα", points: 8525, ebe: "8.40", category: "Ανθρωπιστικά & Κοινωνικά" },
-
-  // ΑΛΛΑ (ΠΕΡΙΒΑΛΛΟΝ, ΓΕΩΓΡΑΦΙΑ κλπ)
-  
-  { id: "356", name: "Γεωγραφίας", uni: "ΧΑΡΟΚΟΠΕΙΟ", city: "Αθήνα", points: 10725, ebe: "9.45", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "1001", name: "Αγροτικής Ανάπτυξης", uni: "ΕΚΠΑ", city: "Ψαχνά", points: 9870, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "1434", name: "Περιβάλλοντος", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Λάρισα", points: 9590, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "548", name: "Αγροτικής Ανάπτυξης", uni: "ΔΠΘ", city: "Ορεστιάδα", points: 9125, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "1453", name: "Περιβάλλοντος", uni: "ΙΟΝΙΟ", city: "Ζάκυνθος", points: 8670, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "212", name: "Δασολογίας & Διαχείρησης Περιβάλλοντος και Φυσικών Πόρων", uni: "ΔΠΘ", city: "Ορεστιάδα", points: 8640, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "1424", name: "Δασολογίας, Επιστημών Ξύλου και Σχεδιασμού", uni: "ΘΕΣΣΑΛΙΑΣ", city: "Καρδίτσα", points: 8605, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "276", name: "Περιβάλλοντος", uni: "ΑΙΓΑΙΟΥ", city: "Μυτιλήνη", points: 8550, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "1276", name: "Αλιείας & Υδατοκαλλιεργειών", uni: "ΠΑΤΡΩΝ", city: "Μεσολόγγι", points: 8335, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-  { id: "310", name: "Γεωγραφίας", uni: "ΑΙΓΑΙΟΥ", city: "Μυτιλήνη", points: 7740, ebe: "8.40", category: "Άλλα (Γεωγραφία, Περιβάλλον κ.α.)" },
-
-  //Τεχνες
-  { id: "675", name: "Εσωτερικής Αρχιτεκτονικής", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 14405, ebe: "13.06", category: "Τέχνες", requirements: "Σχέδιο" },
-  { id: "674", name: "Γραφιστικής και Οπτικής Επικοινωνίας", uni: "ΠΑΔΑ", city: "Αιγάλεω", points: 13745, ebe: "9.09", category: "Τέχνες", requirements: "Σχέδιο" },
-  { id: "1626", name: "Εσωτερικής Αρχιτεκτονικής", uni: "ΔΙΠΑΕ", city: "Σέρρες", points: 13545, ebe: "9.09", category: "Τέχνες", requirements: "Σχέδιο" },
-
-  //Σχεδιο Μοδας
-  { id: "566", name: "Δημιουργικού Σχεδιασμού και Ένδυσης", uni: "ΔΙΠΑΕ", city: "Κιλκίς", points: 8650, ebe: "8.4", category: "Σχέδιο Μόδας"},
-
-];
-
-const BasesPage: React.FC = () => {
-  const [search, setSearch] = useState("");
-  const [activeCity, setActiveCity] = useState("Όλες");
-
-  const cities = useMemo(() => ["Όλες", ...Array.from(new Set(ALL_SCHOOLS.map(s => s.city))).sort()], []);
+  const cities = useMemo(
+    () => ['Όλες', ...Array.from(new Set(ALL_SCHOOLS.map((s) => s.city))).sort()],
+    []
+  );
 
   const filteredSchools = useMemo(() => {
-    return ALL_SCHOOLS.filter(s => {
-      const matchesSearch = s.name.toLowerCase().includes(search.toLowerCase()) || 
-                           s.uni.toLowerCase().includes(search.toLowerCase());
-      const matchesCity = activeCity === "Όλες" || s.city === activeCity;
+    return ALL_SCHOOLS.filter((s) => {
+      const matchesSearch =
+        s.name.toLowerCase().includes(search.toLowerCase()) ||
+        s.uni.toLowerCase().includes(search.toLowerCase());
+      const matchesCity = activeCity === 'Όλες' || s.city === activeCity;
       return matchesSearch && matchesCity;
     }).sort((a, b) => b.points - a.points);
   }, [search, activeCity]);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-gray-950 pb-24">
-      {/* Navbar / Filters */}
-      <nav className="sticky top-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-xl border-b border-gray-200 dark:border-gray-800 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-28 flex flex-col justify-center">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <h1 className="text-xl font-black text-gray-900 dark:text-white shrink-0">Σχολές <span className="text-pink-600">4ο Επιστημονικό πεδίο</span></h1>
-            
-            <div className="flex w-full max-w-3xl gap-3">
+    <div className="-mt-20 pt-24 min-h-screen bg-[#ff97b2] dark:bg-[#2d1c48] text-gray-900 dark:text-gray-100 transition-colors duration-500 pb-24">
+      {/* Header */}
+      <header className="border-b border-[#f07f97]/35 dark:border-white/10 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-md">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 sm:py-12 text-center">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-[#ff97b2]/15 dark:bg-white/10 mb-3">
+            <MenuIconImg src={MENU_ICONS.schools} className="w-9 h-9" />
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-gray-900 dark:text-[#faf5ef] tracking-tight">
+            Σχολές
+          </h1>
+          <p className="mt-2 text-sm sm:text-base text-gray-600 dark:text-gray-300 max-w-xl mx-auto leading-relaxed">
+            <span className="text-[#f07f97] dark:text-[#ff97b2] font-semibold">4ο Επιστημονικό Πεδίο</span> —
+            αναζήτησε σχολές, δες μόρια/ΕΒΕ και σύγκρινε μαθήματα
+          </p>
+        </div>
+      </header>
+
+      {/* Filters */}
+      <nav className="sticky top-0 z-50 bg-white/90 dark:bg-[#3a2658]/90 backdrop-blur-xl border-b border-[#f07f97]/30 dark:border-white/10 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setCompareView(!isCompareView)}
+              className={`shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl font-bold text-sm border transition-colors ${
+                isCompareView
+                  ? 'bg-[#f07f97] text-white border-[#f07f97]'
+                  : 'border-[#f07f97]/30 text-[#f07f97] hover:bg-[#fff5f8] dark:hover:bg-white/5'
+              }`}
+            >
+              <GitCompare size={16} />
+              {isCompareView ? 'Πίσω στις σχολές' : 'Σύγκριση μαθημάτων'}
+            </button>
+
+            <div className={`flex w-full max-w-3xl gap-3 flex-wrap md:flex-nowrap ${isCompareView ? 'hidden' : ''}`}>
               <div className="relative flex-1 group">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-pink-500 transition-colors" size={18} />
-                <input 
-                  type="text" 
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#f07f97] transition-colors"
+                  size={18}
+                />
+                <input
+                  type="text"
                   placeholder="Αναζήτηση σχολής ή πανεπιστημίου..."
-                  className="w-full pl-10 pr-4 py-3 bg-gray-100 dark:bg-gray-800 border-none rounded-2xl focus:ring-2 focus:ring-pink-500 outline-none dark:text-white transition-all shadow-inner"
+                  className="w-full pl-10 pr-4 py-3 bg-white dark:bg-[#2d1c48] border border-[#f07f97]/25 dark:border-white/15 rounded-2xl focus:ring-2 focus:ring-[#f07f97]/40 focus:border-[#f07f97] outline-none dark:text-white transition-all shadow-inner"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
               <div className="relative shrink-0">
-                <select 
-                  className="appearance-none bg-gray-100 dark:bg-gray-800 pl-10 pr-10 py-3 rounded-2xl font-bold text-sm dark:text-white cursor-pointer outline-none focus:ring-2 focus:ring-pink-500 transition-all shadow-inner"
-                  value={activeCity}
-                  onChange={(e) => setActiveCity(e.target.value)}
-                >
-                  {cities.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-pink-600" size={16} />
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+                <Select value={activeCity} onValueChange={setActiveCity}>
+                  <SelectTrigger className="relative flex items-center justify-between bg-white dark:bg-[#2d1c48] border border-[#f07f97]/25 dark:border-white/15 pl-10 pr-10 py-3 rounded-2xl font-bold text-sm dark:text-white cursor-pointer outline-none focus:ring-2 focus:ring-[#f07f97]/40 transition-all shadow-inner h-auto w-[200px] [&>svg:not(.absolute)]:hidden">
+                    <MapPin
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-[#f07f97] pointer-events-none z-10"
+                      size={16}
+                    />
+                    <SelectValue placeholder="Επιλέξτε πόλη" className="flex-1 text-left" />
+                    <ChevronDown className="h-4 w-4 opacity-50 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white dark:bg-[#3a2658] border-[#f07f97]/25 dark:border-white/15 rounded-xl max-h-[240px]">
+                    {cities.map((c) => (
+                      <SelectItem
+                        key={c}
+                        value={c}
+                        className="font-semibold text-sm cursor-pointer dark:text-gray-100 focus:bg-[#f07f97]/10 dark:focus:bg-white/10"
+                      >
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </div>
@@ -325,62 +301,199 @@ const BasesPage: React.FC = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 mt-12">
+      <main className="max-w-7xl mx-auto px-4 mt-8 sm:mt-10">
+        {isCompareView ? (
+          <SchoolCourseComparePanel
+            schoolAId={compareSchoolAId}
+            schoolBId={compareSchoolBId}
+            onSchoolAChange={setCompareSchoolAId}
+            onSchoolBChange={setCompareSchoolBId}
+            onSwapSchools={() => {
+              setCompareSchoolAId(compareSchoolBId);
+              setCompareSchoolBId(compareSchoolAId);
+            }}
+          />
+        ) : (
+          <>
+        
+        
+
         {Object.entries(CATEGORIES).map(([catName, config]) => {
-          const schools = filteredSchools.filter(s => s.category === catName);
+          const schools = filteredSchools.filter((s) => s.category === catName);
           if (schools.length === 0) return null;
 
           return (
-            <motion.section 
+            <motion.section
               key={catName}
               initial={{ opacity: 0, y: 20 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               className="mb-16"
             >
+              {catName in CATEGORY_CAREERS && (
+                <button
+                  type="button"
+                  onClick={() => setActiveCareersCategory(catName as CareersCategory)}
+                  className="mb-6 w-full flex items-center gap-4 rounded-[2rem] border border-[#f07f97]/30 dark:border-white/15 bg-white/95 dark:bg-[#3a2658] px-5 py-4 sm:px-6 sm:py-5 text-left shadow-md hover:border-[#f07f97]/60 hover:shadow-lg transition-all group"
+                >
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#fff5f8] dark:bg-[#2d1c48] shadow-sm border border-[#f07f97]/25">
+                    <MenuIconImg src={FUTURE_CAREERS_ICON} className="h-10 w-10" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-lg sm:text-xl font-black text-gray-900 dark:text-white group-hover:text-[#f07f97] dark:group-hover:text-[#ff97b2] transition-colors">
+                      Μελλοντική καριέρα
+                    </p>
+                    <p className="mt-0.5 text-sm text-gray-600 dark:text-gray-300">
+                      Δες {CATEGORY_CAREERS[catName as CareersCategory].careers.length}{' '}
+                      {CATEGORY_CAREERS[catName as CareersCategory].blurb} και τι κάνει το καθένα
+                    </p>
+                  </div>
+                  <span className="shrink-0 rounded-xl bg-[#fff5f8] dark:bg-[#2d1c48] px-3 py-1.5 text-xs font-black text-[#f07f97] dark:text-[#ff97b2] uppercase tracking-wide">
+                    Άνοιγμα
+                  </span>
+                </button>
+              )}
               <div className="flex items-center gap-4 mb-8">
-                <div className={`p-3 rounded-2xl ${config.color} shadow-sm border border-white/20`}>
-                  {config.icon}
+                <div
+                  className={`flex items-center justify-center w-12 h-12 rounded-2xl ${config.color} shadow-sm border border-white/20 shrink-0`}
+                >
+                  <MenuIconImg src={config.iconSrc} className="w-10 h-10 sm:w-11 sm:h-11" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-gray-800 dark:text-white tracking-tight">{catName}</h2>
-                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mt-1">{schools.length} Σχολές</p>
+                  <h2 className="text-xl font-black text-gray-800 dark:text-white tracking-tight">
+                    {catName}
+                  </h2>
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest leading-none mt-1">
+                    {schools.length} Σχολές
+                  </p>
                 </div>
-                <div className="flex-1 h-px bg-gradient-to-r from-gray-200 to-transparent dark:from-gray-800 ml-4"></div>
+                <div className="flex-1 h-px bg-gradient-to-r from-[#f07f97]/40 to-transparent dark:from-white/20 ml-4"></div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {schools.map((school) => (
-                  <SchoolCard key={school.id} school={school} />
+                  <SchoolCard
+                    key={school.id}
+                    school={school}
+                    onOpenCurriculum={
+                      canOpenSchoolCurriculum(school.id)
+                        ? () => setCurriculumSchoolId(school.id)
+                        : undefined
+                    }
+                  />
                 ))}
               </div>
             </motion.section>
           );
         })}
+          </>
+        )}
       </main>
+
+      {activeCurriculum && (
+        <SchoolCurriculumModal
+          open={curriculumSchoolId !== null}
+          onClose={() => setCurriculumSchoolId(null)}
+          curriculum={activeCurriculum}
+        />
+      )}
+
+      {activeCareersCategory && (
+        <CareersModal
+          open={activeCareersCategory !== null}
+          onClose={() => setActiveCareersCategory(null)}
+          subtitle={CATEGORY_CAREERS[activeCareersCategory].subtitle}
+          careers={CATEGORY_CAREERS[activeCareersCategory].careers}
+          columnTitle={CATEGORY_CAREERS[activeCareersCategory].columnTitle}
+        />
+      )}
     </div>
   );
 };
 
-const SchoolCard: React.FC<{ school: School }> = ({ school }) => (
-  <motion.div 
-    whileHover={{ y: -8, scale: 1.01 }}
-    className="bg-white dark:bg-gray-900 p-6 rounded-[2.5rem] border border-gray-100 dark:border-gray-800 shadow-sm hover:shadow-2xl hover:shadow-pink-500/10 transition-all group overflow-hidden relative"
+const MILITARY_SCHOOL_CATEGORY = 'Σώματα Ασφαλείας & Στρατιωτικές';
+
+function isMilitarySchool(school: School): boolean {
+  return school.category === MILITARY_SCHOOL_CATEGORY || school.uni === 'ΣΣΑΣ';
+}
+
+const SchoolCard: React.FC<{
+  school: School;
+  onOpenCurriculum?: () => void;
+}> = ({ school, onOpenCurriculum }) => {
+  const disableHover = isMilitarySchool(school) || !onOpenCurriculum;
+  const [copied, setCopied] = useState(false);
+
+  const copySchoolName = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = `${school.name} (${school.uni})`;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
+  return (
+  <motion.div
+    role={onOpenCurriculum ? 'button' : undefined}
+    tabIndex={onOpenCurriculum ? 0 : undefined}
+    onClick={onOpenCurriculum}
+    onKeyDown={
+      onOpenCurriculum
+        ? (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onOpenCurriculum();
+            }
+          }
+        : undefined
+    }
+    className={`group bg-white dark:bg-[#3a2658] p-6 rounded-[2.5rem] border border-[#f07f97]/20 dark:border-white/15 shadow-sm overflow-hidden relative transition-all duration-200 ${
+      disableHover
+        ? ''
+        : 'hover:bg-[#fff5f8] dark:hover:bg-[#452d6a] hover:border-[#f07f97]/50 hover:shadow-md'
+    } ${
+      onOpenCurriculum
+        ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f07f97]'
+        : ''
+    }`}
   >
     {/* Background Pattern */}
-    <div className="absolute -top-10 -right-10 w-24 h-24 bg-pink-500/5 rounded-full blur-2xl group-hover:bg-pink-500/10 transition-all" />
+    <div className="absolute -top-10 -right-10 w-24 h-24 bg-coral-accent/5 rounded-full blur-2xl" />
 
     <div className="flex justify-between items-start mb-4">
       <div className="space-y-1 pr-10">
-        <span className="text-[10px] font-black text-pink-600 bg-pink-50 dark:bg-pink-900/30 px-2 py-0.5 rounded-lg uppercase tracking-wider">
+        <span className="text-[10px] font-black text-[#f07f97] bg-[#fff5f8] dark:bg-[#f07f97]/15 px-2 py-0.5 rounded-lg uppercase tracking-wider">
           {school.uni}
         </span>
-        <h3 className="text-lg font-bold text-gray-900 dark:text-white leading-tight group-hover:text-pink-600 transition-colors">
-          {school.name}
-        </h3>
+        <div className="flex items-start gap-1.5 min-w-0">
+          <h3
+            className={`text-lg font-bold text-gray-900 dark:text-white leading-tight transition-colors min-w-0 ${
+              disableHover ? '' : 'group-hover:text-[#f07f97] dark:group-hover:text-[#ff97b2]'
+            }`}
+          >
+            {school.name}
+          </h3>
+          <button
+            type="button"
+            onClick={copySchoolName}
+            className={`shrink-0 mt-0.5 p-1 rounded-lg border transition-colors ${
+              copied
+                ? 'border-emerald-300 bg-emerald-50 text-emerald-600 dark:border-emerald-500/40 dark:bg-emerald-950/30 dark:text-emerald-400'
+                : 'border-[#f07f97]/25 bg-[#fff5f8] text-[#f07f97] hover:bg-[#f07f97]/10 dark:border-white/15 dark:bg-[#2d1c48] dark:text-[#ff97b2] dark:hover:bg-white/5'
+            }`}
+            aria-label={copied ? 'Αντιγράφηκε' : 'Αντιγραφή ονόματος σχολής'}
+            title={copied ? 'Αντιγράφηκε!' : 'Αντιγραφή'}
+          >
+            {copied ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} strokeWidth={2.5} />}
+          </button>
+        </div>
       </div>
-      <div className="shrink-0 bg-slate-50 dark:bg-gray-800 p-2 rounded-2xl">
-        <TrendingUp className="text-gray-400 group-hover:text-pink-500 transition-colors" size={18} />
+      <div className="shrink-0 bg-[#fff5f8] dark:bg-[#2d1c48] p-2 rounded-2xl">
+        <TrendingUp className="text-gray-400" size={18} />
       </div>
     </div>
 
@@ -388,30 +501,42 @@ const SchoolCard: React.FC<{ school: School }> = ({ school }) => (
       <div className="flex items-center gap-1.5 mb-4">
         <Info size={12} className="text-amber-500 shrink-0" />
         <span className="text-[10px] font-black text-amber-600 uppercase tracking-tighter italic">
-           {school.requirements}
+          {school.requirements}
         </span>
       </div>
     )}
 
-    <div className="flex items-end justify-between mt-8 pt-5 border-t border-slate-50 dark:border-gray-800/50">
+    {onOpenCurriculum && (
+      <div className="flex items-center gap-1.5 mb-4 px-2.5 py-1.5 rounded-xl bg-[#fff5f8] dark:bg-[#f07f97]/10 border border-[#f07f97]/25 w-fit">
+        <BookOpen size={13} className="text-[#f07f97] shrink-0" />
+        <span className="text-[10px] font-black text-[#f07f97] uppercase tracking-wide">
+          Πρόγραμμα σπουδών
+        </span>
+      </div>
+    )}
+
+    <div className="flex items-end justify-between mt-8 pt-5 border-t border-[#f07f97]/15 dark:border-white/10">
       <div className="space-y-1.5">
         <div className="flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
-          <MapPin size={14} className="text-pink-500" />
+          <MapPin size={14} className="text-[#f07f97]" />
           <span className="text-xs font-bold">{school.city}</span>
         </div>
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-gray-800 rounded-full text-gray-400">
-          <span className="text-[10px] font-black">EBE: {school.ebe}</span>
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-[#fff5f8] dark:bg-[#2d1c48] rounded-full text-gray-500 dark:text-gray-400">
+          <span className="text-[10px] font-black">EBE: {formatEbeDisplay(school.ebe)}</span>
         </div>
       </div>
 
       <div className="text-right">
-        <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Βάση 2025</span>
+        <span className="block text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">
+          Βάση 2026
+        </span>
         <span className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter tabular-nums leading-none">
-          {school.points.toLocaleString()}
+          {formatMoriaDisplay(school.points)}
         </span>
       </div>
     </div>
   </motion.div>
-);
+  );
+};
 
-export default BasesPage;
+export default SchoolsPage;

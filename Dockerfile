@@ -1,3 +1,5 @@
+# Technotes production image: Vite frontend + FastAPI backend behind Nginx.
+
 # Stage 1: Build React App
 FROM node:20 AS frontend-build
 ARG FRONTEND_ENV
@@ -32,7 +34,9 @@ RUN chmod +x /entrypoint.sh
 RUN apk add --no-cache python3 py3-pip \
     && pip3 install --break-system-packages -r /backend/requirements.txt
 
-# Add env variables if needed
+# At container run time, set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY so entrypoint.sh can
+# inject them into /usr/share/nginx/html/env.js (no frontend rebuild required).
+# Optional: VITE_BACKEND_URL if the API is not same-origin.
 ENV PYTHONUNBUFFERED=1
 
 # Start both services: Uvicorn and Nginx

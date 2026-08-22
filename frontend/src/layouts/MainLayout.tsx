@@ -1,50 +1,63 @@
-import React, { useState, useMemo } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+﻿import React, { useState, useMemo, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+
 import {
-  Home,
-  BookOpen,
-  Trophy,
-  Brain,
-  Code,
-  FileText,
   Menu,
   X,
-  GraduationCap,
-  LogOut,
-  LogIn,
-  UserPlus,
-  Compass,
-  ShoppingBag,
+  // ShoppingBag,
   LucideIcon,
-  User,
   ChevronDown,
+  Instagram,
+  Linkedin,
+  Youtube,
+  Music2,
+  // LogIn,
+  // LogOut,
 } from 'lucide-react';
-import technotesLogo from '../assets/technotes_logo.png';
-import { useAuth } from '@/contexts/AuthContext';
+import { FaDiscord } from 'react-icons/fa';
+import { toggleTheme, getPreferredTheme } from '@/utils/theme';
+// import { useAuth } from '@/context/AuthContext'; // Σύνδεση — προσωρινά απενεργοποιημένη
+import { prefetchCriticalPrivateRoutes, loadGloglossaPage } from '@/routes/routes';
+import { getBackendUrlCandidates } from '@/utils/backendUrl';
+import CookieConsent from '@/components/other/CookieConsent';
+import Breadcrumbs from '@/components/other/Breadcrumbs';
+import { MENU_ICONS, MenuNavIcon, prefetchAllMenuIcons, prefetchMenuIcons } from '@/data/menuIcons';
+import { PANIC_MESSAGES } from '@/data/panicMessages';
+import { TERMS_LAST_UPDATED } from '@/data/legalDates';
+import { DISCORD_INVITE_URL } from '@/seo/siteMeta';
+import { OptimizedImg } from '@/components/other/OptimizedImg';
+// const ChatWidget = lazy(() => import('@/components/ai/ChatWidget'));
+
+const DARK_THEME_ICON = '/images/home%20page/starr.png';
+const LIGHT_THEME_ICON = '/images/home%20page/sun.png';
 
 // --- Constants & Animations ---
-const BRAND = '#fda8a9';
-const BRAND_DARK = '#f88b8c';
 
 const fadeIn = {
   initial: { opacity: 0, y: 30 },
   whileInView: { opacity: 1, y: 0 },
   viewport: { once: true },
-  transition: { duration: 0.6 }
+  transition: { duration: 0.6 },
 };
 
 // --- Interfaces ---
 interface NavButtonProps {
   to: string;
   children: React.ReactNode;
+  iconSrc?: string;
+  iconLabel?: string;
 }
 
 interface MobileNavButtonProps {
   to: string;
   children: React.ReactNode;
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  iconSrc?: string;
+  iconLabel?: string;
   onClick: () => void;
+  /** Παράκαμψη isActive (π.χ. `/methodologies?t=...`). */
+  isActiveOverride?: boolean;
 }
 
 interface MainLayoutProps {
@@ -53,274 +66,601 @@ interface MainLayoutProps {
 
 // --- Components ---
 
-const NavButton: React.FC<NavButtonProps> = ({ to, children }) => (
-  <NavLink
-    to={to}
-    className={({ isActive }) =>
-      `relative py-2 px-3 rounded-xl font-semibold text-sm xl:text-base transition-all duration-200 whitespace-nowrap ${
-        isActive
-          ? 'text-white'
-          : 'text-gray-700 dark:text-gray-200 hover:text-pink-600 dark:hover:text-pink-400'
-      }`
-    }
-  >
-    {({ isActive }) => (
-      <>
-        {isActive && (
-          <motion.div
-            className="absolute inset-0 rounded-xl"
-            style={{ background: `linear-gradient(135deg, ${BRAND}, ${BRAND_DARK})` }}
-            layoutId="activeNav"
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          />
-        )}
-        <span className="relative z-10">{children}</span>
-      </>
-    )}
-  </NavLink>
+// --- Menu structure ---
+
+type MenuLinkItem = {
+  to: string;
+  label: string;
+  iconSrc: string;
+  onPrefetch?: () => void;
+};
+
+const PREP_MENU_ITEMS: MenuLinkItem[] = [
+  { to: '/quiz', label: 'Quiz', iconSrc: MENU_ICONS.quiz },
+  { to: '/flashcards', label: 'Flashcards', iconSrc: MENU_ICONS.flashcards },
+  { to: '/methodologies', label: 'Μεθοδολογίες', iconSrc: MENU_ICONS.methodologies },
+  { to: '/domes-dedomenon', label: 'Δομές Δεδομένων', iconSrc: MENU_ICONS.dataStructures },
+  { to: '/paliathemata', label: 'Παλιά Θέματα', iconSrc: MENU_ICONS.paliathemata },
+  { to: '/askiseis', label: 'Ασκήσεις', iconSrc: MENU_ICONS.askiseis },
+  { to: '/algorithms', label: 'Αλγόριθμοι', iconSrc: MENU_ICONS.algorithms },
+  { to: '/progress-tracker', label: 'Progress Tracker', iconSrc: MENU_ICONS.progressTracker },
+  { to: '/gloglossa', label: 'Διερμηνευτής ΓΛΩΣΣΑΣ', iconSrc: MENU_ICONS.gloglossa, onPrefetch: loadGloglossaPage },
+  {
+    to: '/vivlia',
+    label: 'Σχολικά βιβλία',
+    iconSrc: MENU_ICONS.vivlia,
+    onPrefetch: () => {
+      void import('@/pages/public/VivliaPage').then((m) => m.prefetchVivliaPdfs());
+    },
+  },
+];
+
+const SCHOOLS_MENU_ITEMS: MenuLinkItem[] = [
+  { to: '/sxoles', label: 'Σχολές', iconSrc: MENU_ICONS.schools },
+  { to: '/syntelestes-sxolon', label: 'Συντελεστές Σχολών', iconSrc: MENU_ICONS.syntelestesSxolon },
+  { to: '/prosanatolismos', label: 'Προσανατολισμός', iconSrc: MENU_ICONS.prosanatolismos },
+  { to: '/ypologismos-morion', label: 'Υπολογισμός Μορίων', iconSrc: MENU_ICONS.ypologismosMorion },
+  { to: '/mixanografiko', label: 'Μηχανογραφικό (Πρόβα)', iconSrc: MENU_ICONS.mixanografiko },
+  { to: '/antistoixies-sxolon', label: 'Αντιστοιχίες Σχολών', iconSrc: MENU_ICONS.antistixia },
+  { to: '/meteggrafes', label: 'Μετεγγραφές', iconSrc: MENU_ICONS.meteggrafes },
+  { to: '/saek', label: 'ΣΑΕΚ', iconSrc: MENU_ICONS.saek },
+];
+
+const MobileMenuSectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <p className="px-4 pt-4 pb-1 text-[11px] font-black uppercase tracking-wide text-gray-500 dark:text-gray-400">
+    {children}
+  </p>
 );
 
-const MobileNavButton: React.FC<MobileNavButtonProps> = ({ to, children, icon: Icon, onClick }) => (
-  <NavLink
-    to={to}
-    onClick={onClick}
-    className={({ isActive }) =>
-      `relative block w-full text-left py-4 px-4 rounded-xl transition-all ${
-        isActive
-          ? 'text-white'
-          : 'text-gray-700 dark:text-gray-200 hover:bg-pink-50 dark:hover:bg-gray-800'
-      }`
-    }
-  >
-    {({ isActive }) => (
-      <>
-        {isActive && (
-          <motion.div
-            className="absolute inset-0 rounded-xl"
-            style={{ background: `linear-gradient(135deg, ${BRAND}, ${BRAND_DARK})` }}
-            layoutId="mobileActiveNav"
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          />
-        )}
-        <div className="flex items-center gap-3 relative z-10">
-          <Icon className="w-5 h-5" />
-          <span className="font-semibold">{children}</span>
-        </div>
-      </>
-    )}
-  </NavLink>
-);
-
-const ProfileDropdown: React.FC = () => {
-  const { user, logout } = useAuth();
+const NavDropdown: React.FC<{ title: string; items: MenuLinkItem[] }> = ({ title, items }) => {
+  const [open, setOpen] = useState(false);
   const navigate = useNavigate();
-  const [isOpen, setIsOpen] = useState(false);
 
-  const initials = useMemo(() => {
-    const name = user?.username || user?.email || 'U';
-    return name.charAt(0).toUpperCase();
-  }, [user]);
-
-  if (!user) return null;
+  const LinkItem: React.FC<MenuLinkItem> = ({ to, label, iconSrc, onPrefetch }) => (
+    <button
+      type="button"
+      onClick={() => navigate(to)}
+      onMouseEnter={() => onPrefetch?.()}
+      className="flex w-full min-h-11 items-center gap-3 px-3 py-2 rounded-lg hover:bg-coral-wash dark:hover:bg-[#2d1c48] text-sm text-gray-700 dark:text-gray-200 text-left"
+    >
+      <MenuNavIcon src={iconSrc} />
+      <span className="font-semibold leading-tight">{label}</span>
+    </button>
+  );
 
   return (
-    <div className="relative">
-      <motion.button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 p-1 rounded-full hover:bg-pink-50 dark:hover:bg-gray-800 transition-all"
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-      >
-        <motion.div
-          className="relative w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 via-rose-500 to-red-500 flex items-center justify-center text-white font-bold shadow-lg"
-          whileHover={{ boxShadow: '0 0 20px rgba(236, 72, 153, 0.6)', scale: 1.1 }}
-        >
-          {initials}
-        </motion.div>
-        <motion.div animate={{ rotate: isOpen ? 180 : 0 }}>
-          <ChevronDown className="w-4 h-4 text-gray-600 dark:text-gray-300" />
-        </motion.div>
-      </motion.button>
-
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button className="py-2 px-3 rounded-xl font-semibold text-sm xl:text-base text-gray-700 dark:text-gray-200 hover:text-coral-accent dark:hover:text-coral-light inline-flex items-center gap-1">
+        {title}
+        <ChevronDown className="w-4 h-4" />
+      </button>
       <AnimatePresence>
-        {isOpen && (
-          <>
-            <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-            <motion.div
-              className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 overflow-hidden z-50"
-              initial={{ opacity: 0, y: -20, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -20, scale: 0.95 }}
-            >
-              <div className="bg-gradient-to-br from-pink-500 via-rose-500 to-red-500 p-6 text-white">
-                <p className="font-bold text-lg truncate">{user.username || 'Χρήστης'}</p>
-                <p className="text-sm opacity-80 truncate">{user.email}</p>
-              </div>
-              <div className="p-2 space-y-1">
-                <motion.button 
-                  onClick={() => { navigate('/profile'); setIsOpen(false); }} 
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-pink-50 dark:hover:bg-gray-700 transition-all text-gray-700 dark:text-gray-200"
-                  whileHover={{ x: 5 }}
-                >
-                  <User size={18} className="text-pink-600" /> <span className="font-semibold">Προφίλ</span>
-                </motion.button>
-                <motion.button 
-                  onClick={async () => { await logout(); setIsOpen(false); navigate('/login'); }} 
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-red-600"
-                  whileHover={{ x: 5 }}
-                >
-                  <LogOut size={18} /> <span className="font-semibold">Αποσύνδεση</span>
-                </motion.button>
-              </div>
-            </motion.div>
-          </>
+        {open && (
+          <motion.div
+            className="absolute right-0 mt-2 w-[min(20rem,calc(100vw-1.5rem))] bg-white dark:bg-[#3a2658] rounded-2xl shadow-2xl border border-coral-accent/15 dark:border-white/10 p-3 z-50"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+          >
+            <div className="flex flex-col gap-1">
+              {items.map((item) => (
+                <LinkItem key={item.to} {...item} />
+              ))}
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
 };
 
+const NavButton: React.FC<NavButtonProps> = ({ to, children, iconSrc, iconLabel }) => (
+  <NavLink
+    to={to}
+    className={({ isActive }) =>
+      `relative py-2 px-3 rounded-xl font-semibold text-sm xl:text-base transition-all duration-200 whitespace-nowrap ${
+        isActive
+          ? 'text-white'
+          : 'text-gray-700 dark:text-gray-200 hover:text-coral-accent dark:hover:text-coral-light'
+      }`
+    }
+  >
+    {({ isActive }) => (
+      <>
+        {isActive && (
+          <motion.div
+            className="absolute inset-0 rounded-xl bg-coral-accent"
+            layoutId="activeNav"
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+          />
+        )}
+        <span className="relative z-10 inline-flex items-center gap-2">
+          {iconSrc ? <MenuNavIcon src={iconSrc} compact label={iconLabel} /> : null}
+          {children}
+        </span>
+      </>
+    )}
+  </NavLink>
+);
+
+const MobileNavButton: React.FC<MobileNavButtonProps> = ({
+  to,
+  children,
+  icon: Icon,
+  iconSrc,
+  iconLabel,
+  onClick,
+  isActiveOverride,
+}) => (
+  <NavLink
+    to={to}
+    onClick={onClick}
+    className={({ isActive }) => {
+      const active = isActiveOverride !== undefined ? isActiveOverride : isActive;
+      return `relative block w-full text-left min-h-11 py-3.5 px-4 rounded-xl transition-all touch-manipulation border border-transparent ${
+        active
+          ? 'border-coral-accent/25 shadow-sm'
+          : 'text-gray-700 dark:text-gray-200 hover:bg-rose-50/90 dark:hover:bg-[#2d1c48]/90'
+      }`;
+    }}
+  >
+    {({ isActive }) => {
+      const active = isActiveOverride !== undefined ? isActiveOverride : isActive;
+      return (
+        <>
+          {active && (
+            <motion.div
+              className="absolute inset-0 rounded-xl bg-rose-50 dark:bg-[rgba(255,107,122,0.14)] border border-coral-accent/20"
+              layoutId="mobileActiveNav"
+              transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+            />
+          )}
+          <div className="flex items-center gap-3 relative z-10">
+            {iconSrc ? (
+              <MenuNavIcon src={iconSrc} label={iconLabel} />
+            ) : Icon ? (
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center" aria-hidden>
+                <Icon
+                  className={`h-7 w-7 ${active ? 'text-coral-accent dark:text-coral-light' : 'text-gray-500 dark:text-gray-400'}`}
+                />
+              </span>
+            ) : null}
+            <span className={`font-semibold leading-tight ${active ? 'text-slate-800 dark:text-gray-50' : ''}`}>
+              {children}
+            </span>
+          </div>
+        </>
+      );
+    }}
+  </NavLink>
+);
+
+const ThemeToggleButton: React.FC<{
+  isDark: boolean;
+  onToggle: () => void;
+  className?: string;
+}> = ({ isDark, onToggle, className = '' }) => (
+  <button
+    type="button"
+    aria-label="Theme toggle"
+    onClick={onToggle}
+    className={`min-h-11 min-w-11 p-1.5 rounded-xl border border-coral-accent/35 text-coral-accent hover:bg-coral-wash transition-colors touch-manipulation inline-flex items-center justify-center ${className}`}
+    title={isDark ? 'Φωτεινό θέμα' : 'Σκοτεινό θέμα'}
+  >
+    {isDark ? (
+      <OptimizedImg
+        src={LIGHT_THEME_ICON}
+        alt=""
+        loading="eager"
+        className="w-8 h-8 object-contain [image-rendering:pixelated]"
+      />
+    ) : (
+      <OptimizedImg
+        src={DARK_THEME_ICON}
+        alt=""
+        loading="eager"
+        className="w-8 h-8 object-contain"
+      />
+    )}
+  </button>
+);
+
 // --- Main Layout Component ---
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
-  const { user, logout, loading } = useAuth();
+  const location = useLocation();
+  // const { user, logout } = useAuth(); // Σύνδεση — προσωρινά απενεργοποιημένη
+  const isHomePage = location.pathname === '/';
+  const isSchoolsPage = location.pathname === '/sxoles';
+  const isAboutPage = location.pathname === '/about';
+  // const chatPathAllowed = shouldShowChatWidgetOnPath(location.pathname);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isDark, setIsDark] = useState<boolean>(() => getPreferredTheme() === 'dark');
+  // const [shouldLoadChat, setShouldLoadChat] = useState(false);
+  const [showNavbar, setShowNavbar] = useState(false);
+  const lastScrollYRef = React.useRef(0);
   const currentYear = useMemo(() => new Date().getFullYear(), []);
-  const navigate = useNavigate();
 
   const closeMenu = () => setIsMenuOpen(false);
 
+  useEffect(() => {
+    if (isMenuOpen) prefetchAllMenuIcons();
+  }, [isMenuOpen]);
+
+  // Take a breath (global wellness prompt)
+  const [showPanic, setShowPanic] = useState(false);
+  const [panicMsg, setPanicMsg] = useState<{ type: 'tip' | 'joke' | 'breath'; text: string }>({
+    type: 'tip',
+    text: '',
+  });
+  const triggerPanic = () => {
+    const pick = PANIC_MESSAGES[Math.floor(Math.random() * PANIC_MESSAGES.length)];
+    setPanicMsg(pick);
+    setShowPanic(true);
+  };
+
+  // Defer API warm-up + route prefetch until after first paint / LCP window —
+  // early network contention was hurting mobile PageSpeed (LCP ~10s).
+  useEffect(() => {
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timeoutId: number | undefined;
+    let postLoadTimeoutId: number | undefined;
+
+    const warmAndPrefetch = () => {
+      if (cancelled) return;
+      prefetchMenuIcons();
+      for (const base of getBackendUrlCandidates()) {
+        fetch(`${base}/api/health`).catch(() => {});
+      }
+      prefetchCriticalPrivateRoutes();
+    };
+
+    const schedule = () => {
+      if (cancelled) return;
+      if (typeof window.requestIdleCallback === 'function') {
+        idleId = window.requestIdleCallback(warmAndPrefetch, { timeout: 12000 });
+      } else {
+        timeoutId = window.setTimeout(warmAndPrefetch, 4000);
+      }
+    };
+
+    const onLoad = () => {
+      postLoadTimeoutId = window.setTimeout(schedule, 1500);
+    };
+
+    if (document.readyState === 'complete') {
+      postLoadTimeoutId = window.setTimeout(schedule, 1500);
+    } else {
+      window.addEventListener('load', onLoad, { once: true });
+    }
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('load', onLoad);
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      if (postLoadTimeoutId !== undefined) window.clearTimeout(postLoadTimeoutId);
+    };
+  }, []);
+
+  // Chatbot — προσωρινά απενεργοποιημένο
+  // useEffect(() => {
+  //   if (!chatPathAllowed) return;
+  //   const idle = (window as any).requestIdleCallback as
+  //     | ((cb: () => void, opts?: { timeout: number }) => number)
+  //     | undefined;
+  //   let timeoutId: number | undefined;
+  //   let idleId: number | undefined;
+  //   if (idle) {
+  //     idleId = idle(() => setShouldLoadChat(true), { timeout: 1500 });
+  //   } else {
+  //     timeoutId = window.setTimeout(() => setShouldLoadChat(true), 900);
+  //   }
+  //   return () => {
+  //     if (timeoutId) window.clearTimeout(timeoutId);
+  //     if (idleId && (window as any).cancelIdleCallback) {
+  //       (window as any).cancelIdleCallback(idleId);
+  //     }
+  //   };
+  // }, [chatPathAllowed]);
+
+  useEffect(() => {
+    const onScroll = () => {
+      const currentY = window.scrollY;
+      const prevY = lastScrollYRef.current;
+      const atTop = currentY <= 8;
+      const scrollingUp = currentY < prevY;
+      setShowNavbar(atTop || scrollingUp);
+      lastScrollYRef.current = currentY;
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-rose-50 to-red-50 dark:from-gray-900 dark:via-purple-900/10 dark:to-gray-900 flex flex-col">
-      
+    <div
+      className={`min-h-screen overflow-x-hidden text-gray-900 dark:text-gray-100 flex flex-col ${
+        isHomePage || isSchoolsPage || isAboutPage
+          ? 'bg-[#ff97b2] dark:bg-[#2d1c48]'
+          : 'bg-coral-wash dark:bg-gradient-to-br dark:from-[#2d1c48] dark:via-[#2d1c48] dark:to-[#1a1028]'
+      }`}
+    >
+      {/* Chatbot — προσωρινά απενεργοποιημένο
+      {shouldLoadChat && chatPathAllowed && (
+        <Suspense fallback={null}>
+          <ChatWidget />
+        </Suspense>
+      )}
+      */}
       {/* Navbar Container */}
-      <div className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-md sticky top-0 z-30 border-b border-pink-100 dark:border-gray-800">
-        <div className="container mx-auto px-6">
-          <div className="flex justify-between items-center py-4">
+      <motion.div
+        initial={false}
+        animate={{
+          y: showNavbar ? 0 : -96,
+          opacity: showNavbar ? 1 : 0,
+          pointerEvents: showNavbar ? 'auto' : 'none',
+        }}
+        transition={{ duration: 0.22, ease: 'easeOut' }}
+        className="bg-white/55 dark:bg-[#3a2658]/85 backdrop-blur-md fixed top-0 left-0 right-0 z-30 pt-[env(safe-area-inset-top,0px)]"
+      >
+        <div className="container mx-auto px-3 sm:px-6 max-w-[100vw]">
+          <div className="flex justify-between items-center gap-2 py-3 sm:py-4 min-h-[3.25rem]">
             {/* Logo */}
-            <NavLink to="/" className="flex items-center gap-3 group shrink-0">
-              <motion.img
-                src={technotesLogo}
-                alt="Technotesgr"
-                className="w-10 h-10 object-contain"
-                whileHover={{ rotate: 360 }}
-                transition={{ duration: 0.6 }}
-              />
-              <span className="font-bold text-gray-800 dark:text-white hidden sm:block">
-                technotesgr
-              </span>
-            </NavLink>
+            <div className="flex items-center gap-3">
+              <NavLink to="/" className="flex items-center gap-3 group shrink-0">
+                <motion.img
+                  src="/images/logo-80.webp"
+                  alt="Λογότυπο Technotes — Πληροφορική Πανελλήνιες"
+                  width={40}
+                  height={40}
+                  decoding="async"
+                  loading="eager"
+                  fetchPriority="high"
+                  className="w-10 h-10 object-contain bg-transparent p-0 m-0"
+                  whileHover={{ rotate: 360 }}
+                  transition={{ duration: 0.6 }}
+                />
+                <span className="font-bold text-gray-800 dark:text-white hidden sm:block">
+                  technotesgr
+                </span>
+              </NavLink>
+            </div>
 
             {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-1 xl:gap-2 flex-wrap justify-end">
-              <NavButton to="/">Αρχική</NavButton>
-              <NavButton to="/about">About us</NavButton>
-              <NavButton to="/merch">Η Ατζέντα</NavButton>
-              
-              <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-2"></div>
+              {/* Take a breath */}
+              <button
+                type="button"
+                onClick={triggerPanic}
+                className="mr-2 px-6 py-3 rounded-full bg-coral-accent hover:bg-coral-strong text-white font-black shadow-lg hover:shadow-xl touch-manipulation min-h-11 transition-colors"
+                title="Take a breath"
+                aria-label="Take a breath"
+              >
+                Take a breath
+              </button>
+              <NavButton to="/" iconSrc={MENU_ICONS.home} iconLabel="Αρχική">Αρχική</NavButton>
+              <NavButton to="/about" iconSrc={MENU_ICONS.about} iconLabel="Σχετικά">Σχετικά με εμένα</NavButton>
+              <NavButton to="/announcements" iconSrc={MENU_ICONS.announcements} iconLabel="Ανακοινώσεις">Ανακοινώσεις</NavButton>
+              <NavButton to="/faq" iconSrc={MENU_ICONS.faq} iconLabel="FAQ">FAQ</NavButton>
 
-              {loading ? (
-                <div className="flex gap-2 animate-pulse">
-                  <div className="h-9 w-24 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>
-                </div>
-              ) : user ? (
-                <>
-                  <NavButton to="/prosanatolismos">Προσανατολισμός</NavButton>
-                  <NavButton to="/sxoles">Σχολές</NavButton>
-                  <NavButton to="/online">Online Μαθήματα</NavButton>
-                  <NavButton to="/quiz">Quiz</NavButton>
-                  <NavButton to="/flashcards">Flashcards</NavButton>
-                  <NavButton to="/paliathemata">Παλιά Θέματα</NavButton>
-                  <NavButton to="/algorithms">Αλγόριθμοι</NavButton>
-                  <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-2"></div>
-                  <ProfileDropdown />
-                </>
+              <div className="w-px h-6 bg-gray-300 dark:bg-gray-700 mx-1" />
+
+              <NavDropdown title="Προετοιμασία" items={PREP_MENU_ITEMS} />
+              <NavDropdown title="Σχολές" items={SCHOOLS_MENU_ITEMS} />
+
+              <ThemeToggleButton
+                isDark={isDark}
+                onToggle={() => setIsDark(toggleTheme() === 'dark')}
+                className="ml-2"
+              />
+
+              {/* Σύνδεση/Αποσύνδεση — προσωρινά απενεργοποιημένη
+              {user ? (
+                <button
+                  type="button"
+                  onClick={() => void logout()}
+                  className="ml-2 flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-coral-accent/35 text-coral-strong dark:text-coral-light hover:bg-coral-wash dark:hover:bg-coral-accent/10 transition-colors touch-manipulation"
+                  title="Αποσύνδεση"
+                >
+                  <LogOut className="w-4.5 h-4.5" aria-hidden />
+                  <span className="max-w-[8rem] truncate text-sm font-semibold">{user.email}</span>
+                </button>
               ) : (
-                <div className="flex items-center gap-3">
-                  <NavButton to="/login">Σύνδεση</NavButton>
-                  <NavLink
-                    to="/register"
-                    className="py-2 px-5 bg-pink-600 text-white rounded-xl font-bold hover:bg-pink-700 transition-all shadow-md"
-                  >
-                    Εγγραφή
-                  </NavLink>
-                </div>
+                <NavLink
+                  to="/login"
+                  className="ml-2 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-coral-accent hover:bg-coral-strong text-white font-bold shadow touch-manipulation transition-colors"
+                >
+                  <LogIn className="w-4.5 h-4.5" aria-hidden />
+                  Σύνδεση
+                </NavLink>
               )}
+              */}
             </div>
 
-            {/* Mobile Menu Button */}
-            <motion.button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="lg:hidden p-3 rounded-xl text-white shadow-lg shrink-0"
-              style={{ background: `linear-gradient(135deg, ${BRAND}, ${BRAND_DARK})` }}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
-            </motion.button>
+            {/* Mobile header actions */}
+            <div className="lg:hidden flex items-center gap-2 shrink-0">
+              <ThemeToggleButton
+                isDark={isDark}
+                onToggle={() => setIsDark(toggleTheme() === 'dark')}
+                className="bg-white/80 dark:bg-[#2d1c48]/80 shadow-sm"
+              />
+              <motion.button
+                type="button"
+                aria-expanded={isMenuOpen}
+                aria-controls="mobile-nav-drawer"
+                aria-label={isMenuOpen ? 'Κλείσιμο μενού' : 'Άνοιγμα μενού'}
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="min-h-11 min-w-11 p-3 rounded-xl text-white bg-coral-accent hover:bg-coral-strong shadow-lg touch-manipulation inline-flex items-center justify-center transition-colors"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {isMenuOpen ? <X size={24} aria-hidden /> : <Menu size={24} aria-hidden />}
+              </motion.button>
+            </div>
           </div>
         </div>
-      </div>
+      </motion.div>
+
+      {/* Take a breath modal */}
+      <AnimatePresence>
+        {showPanic && (
+          <motion.div
+            className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowPanic(false)} />
+            <motion.div
+              className="relative max-w-md w-full max-h-[min(90dvh,32rem)] overflow-y-auto overscroll-contain rounded-3xl bg-white dark:bg-[#3a2658] border-2 border-coral-accent/40 p-5 sm:p-6 pt-12 shadow-2xl"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', stiffness: 240, damping: 20 }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowPanic(false)}
+                className="absolute top-3 right-3 z-10 inline-flex min-h-10 min-w-10 items-center justify-center rounded-xl text-gray-500 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-[#2d1c48] touch-manipulation transition-colors"
+                aria-label="Κλείσιμο"
+              >
+                <X size={22} aria-hidden />
+              </button>
+
+              <button
+                type="button"
+                onClick={triggerPanic}
+                className="mb-4 w-full min-h-11 rounded-xl bg-coral-accent px-4 py-3 font-bold text-white transition-colors hover:bg-coral-strong touch-manipulation"
+              >
+                Άλλο ένα
+              </button>
+
+              <div className="mb-3 flex items-center gap-3">
+                <MenuNavIcon src={MENU_ICONS.takeABreath} />
+                <h3 className="text-xl font-black text-gray-900 dark:text-white">Take a breath</h3>
+              </div>
+              <p className="leading-relaxed text-gray-700 dark:text-gray-300">{panicMsg.text}</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Mobile Menu Drawer */}
       <AnimatePresence>
         {isMenuOpen && (
           <>
             <motion.div
-              className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+              className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-[85]"
               onClick={closeMenu}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
             />
             <motion.div
-              className="lg:hidden fixed top-0 right-0 h-full w-80 bg-white dark:bg-gray-900 z-50 shadow-2xl overflow-y-auto"
+              id="mobile-nav-drawer"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Κύριο μενού"
+              className="lg:hidden fixed top-0 right-0 h-[100dvh] max-h-[100dvh] w-[min(100vw-2.5rem,20rem)] max-w-sm bg-white dark:bg-[#3a2658] z-[90] shadow-2xl overflow-y-auto overscroll-contain pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] border-l-[3px] border-blue-500/85 dark:border-blue-400/70"
               initial={{ x: '100%' }}
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-8">
-                  <span className="text-xl font-black text-pink-600">Μενού</span>
-                  <X onClick={closeMenu} className="cursor-pointer" />
+              <div className="p-4 sm:p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <span className="text-lg sm:text-xl font-black text-coral-accent dark:text-coral-light">Μενού</span>
+                  <button
+                    type="button"
+                    onClick={closeMenu}
+                    className="min-h-11 min-w-11 inline-flex items-center justify-center rounded-xl text-gray-600 dark:text-gray-300 hover:bg-coral-wash dark:hover:bg-[#2d1c48] touch-manipulation"
+                    aria-label="Κλείσιμο μενού"
+                  >
+                    <X className="w-6 h-6" aria-hidden />
+                  </button>
                 </div>
 
-                {user && (
-                  <div className="mb-6 p-4 bg-pink-50 dark:bg-gray-800 rounded-2xl border border-pink-100 dark:border-gray-700">
-                    <p className="text-sm text-gray-500">Συνδεδεμένος ως:</p>
-                    <p className="font-bold text-gray-900 dark:text-white truncate">
-                      {user.username || user.email}
-                    </p>
-                  </div>
-                )}
-
                 <div className="space-y-2">
-                  <MobileNavButton to="/" icon={Home} onClick={closeMenu}>Αρχική</MobileNavButton>
-                  
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerPanic();
+                      closeMenu();
+                    }}
+                    className="w-full flex min-h-11 items-center gap-3 py-3.5 px-4 rounded-xl text-coral-strong dark:text-coral-light bg-coral-wash dark:bg-coral-accent/15 font-bold border border-coral-accent/30 dark:border-coral-accent/35 touch-manipulation"
+                  >
+                    <MenuNavIcon src={MENU_ICONS.takeABreath} />
+                    <span className="leading-tight">Take a breath</span>
+                  </button>
+
+                  <MobileNavButton to="/" iconSrc={MENU_ICONS.home} onClick={closeMenu}>
+                    Αρχική
+                  </MobileNavButton>
+                  <MobileNavButton to="/about" iconSrc={MENU_ICONS.about} onClick={closeMenu}>
+                    Σχετικά με εμένα
+                  </MobileNavButton>
+                  <MobileNavButton to="/announcements" iconSrc={MENU_ICONS.announcements} onClick={closeMenu}>
+                    Ανακοινώσεις
+                  </MobileNavButton>
+                  <MobileNavButton to="/faq" iconSrc={MENU_ICONS.faq} onClick={closeMenu}>
+                    FAQ
+                  </MobileNavButton>
+
+                  <MobileMenuSectionTitle>Προετοιμασία</MobileMenuSectionTitle>
+                  {PREP_MENU_ITEMS.map((item) => (
+                    <MobileNavButton
+                      key={item.to}
+                      to={item.to}
+                      iconSrc={item.iconSrc}
+                      onClick={closeMenu}
+                      isActiveOverride={
+                        item.to === '/methodologies' ? location.pathname === '/methodologies' : undefined
+                      }
+                    >
+                      {item.label}
+                    </MobileNavButton>
+                  ))}
+
+                  <MobileMenuSectionTitle>Σχολές</MobileMenuSectionTitle>
+                  {SCHOOLS_MENU_ITEMS.map((item) => (
+                    <MobileNavButton
+                      key={item.to}
+                      to={item.to}
+                      iconSrc={item.iconSrc}
+                      onClick={closeMenu}
+                    >
+                      {item.label}
+                    </MobileNavButton>
+                  ))}
+
+                  {/* Σύνδεση/Αποσύνδεση — προσωρινά απενεργοποιημένη
                   {user ? (
-                    <>
-                      <MobileNavButton to="/prosanatolismos" icon={Compass} onClick={closeMenu}>Προσανατολισμός</MobileNavButton>
-                      <MobileNavButton to="/online" icon={GraduationCap} onClick={closeMenu}>Online Μαθήματα</MobileNavButton>
-                      <MobileNavButton to="/quiz" icon={Trophy} onClick={closeMenu}>Quiz</MobileNavButton>
-                      <MobileNavButton to="/flashcards" icon={Brain} onClick={closeMenu}>Flashcards</MobileNavButton>
-                      <MobileNavButton to="/algorithms" icon={Code} onClick={closeMenu}>Algorithms</MobileNavButton>
-                      <MobileNavButton to="/paliathemata" icon={FileText} onClick={closeMenu}>Παλιά Θέματα</MobileNavButton>
-                      <MobileNavButton to="/profile" icon={User} onClick={closeMenu}>Προφίλ</MobileNavButton>
-                      <div className="pt-4 mt-4 border-t border-gray-100">
-                         <button onClick={async () => { await logout(); closeMenu(); navigate('/login'); }} className="w-full flex items-center gap-3 py-4 px-4 rounded-xl text-red-600 bg-red-50 font-bold">
-                          <LogOut size={20} /> Έξοδος
-                         </button>
-                      </div>
-                    </>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void logout();
+                        closeMenu();
+                      }}
+                      className="w-full flex min-h-11 items-center gap-3 py-3.5 px-4 rounded-xl text-coral-strong dark:text-coral-light border border-coral-accent/30 dark:border-coral-accent/35 font-bold touch-manipulation"
+                    >
+                      <LogOut className="w-5 h-5 shrink-0" aria-hidden />
+                      <span className="truncate">{user.email}</span>
+                    </button>
                   ) : (
-                    <>
-                      <MobileNavButton to="/login" icon={LogIn} onClick={closeMenu}>Σύνδεση</MobileNavButton>
-                      <MobileNavButton to="/register" icon={UserPlus} onClick={closeMenu}>Εγγραφή</MobileNavButton>
-                    </>
+                    <MobileNavButton to="/login" onClick={closeMenu}>
+                      <span className="inline-flex items-center gap-3">
+                        <LogIn className="w-5 h-5 shrink-0" aria-hidden />
+                        Σύνδεση
+                      </span>
+                    </MobileNavButton>
                   )}
-                  <div className="my-2 border-t border-gray-100 dark:border-gray-800" />
-                  <MobileNavButton to="/merch" icon={ShoppingBag} onClick={closeMenu}>Σχολικά είδη</MobileNavButton>
+                  */}
                 </div>
               </div>
             </motion.div>
@@ -329,50 +669,113 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-grow relative z-10">
+      <main className="flex-grow relative z-10 pb-[env(safe-area-inset-bottom,0px)] pt-20">
+        <Breadcrumbs />
         {children}
       </main>
 
       {/* Footer */}
-      <footer className="relative bg-gradient-to-br from-pink-50 via-rose-50 to-red-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900 border-t border-pink-200 dark:border-gray-700 mt-20">
-        <div className="container mx-auto px-6 py-12 grid grid-cols-1 md:grid-cols-3 gap-12 text-center">
-          <motion.div {...fadeIn}>
-            <h3 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-4 bg-gradient-to-r from-pink-600 to-rose-600 bg-clip-text text-transparent">
-              Σχετικά με εμάς 🎓
-            </h3>
-            <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-              Το <strong className="text-pink-600 dark:text-pink-400">technotesgr</strong> βοηθά μαθητές Γ' Λυκείου να προετοιμαστούν αποτελεσματικά για τις Πανελλαδικές Πληροφορικής.
-            </p>
-          </motion.div>
-
-          <motion.div {...fadeIn} transition={{ delay: 0.2 }}>
-            <h3 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-4">Επικοινωνία</h3>
-            <div className="space-y-3">
-              <a href="https://instagram.com/technotesgr" target="_blank" rel="noopener noreferrer" className="block text-gray-600 dark:text-gray-300 hover:text-pink-600 transition-colors">Instagram: @technotesgr</a>
-              <a href="https://tiktok.com/@technotesgr" target="_blank" rel="noopener noreferrer" className="block text-gray-600 dark:text-gray-300 hover:text-pink-600 transition-colors">TikTok: @technotesgr</a>
-              <a href="https://www.linkedin.com/company/technotesgr/" target="_blank" rel="noopener noreferrer" className="block text-gray-600 dark:text-gray-300 hover:text-pink-600 transition-colors">LinkedIn: technotesgr</a>
+      <footer className="relative -mt-px overflow-hidden border-0 bg-[#ff97b2] dark:bg-[#2d1c48]">
+        <div
+          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-[#ffd4e3] to-white dark:bg-none"
+          aria-hidden="true"
+        />
+        <div className="relative z-10 container mx-auto px-4 sm:px-6 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-0 items-start w-full max-w-[100vw]">
+          <motion.div {...fadeIn} className="text-center md:text-left md:pr-6">
+            <h3 className="text-lg font-extrabold text-black dark:text-gray-100 mb-3">Νομικά</h3>
+            <div className="flex flex-col gap-2 text-black dark:text-gray-100 text-sm md:items-start md:mx-0 mx-auto max-w-xs md:max-w-none">
+              <NavLink to="/privacy-policy" className="hover:opacity-80 transition-opacity">
+                Όροι Χρήσης & Πολιτική Απορρήτου
+              </NavLink>
+              <NavLink to="/data" className="hover:opacity-80 transition-opacity">
+                Προστασία Προσωπικών Δεδομένων
+              </NavLink>
+              <span className="text-xs text-black dark:text-gray-100">
+                Τελευταία ενημέρωση: {TERMS_LAST_UPDATED}
+              </span>
             </div>
           </motion.div>
 
-          <motion.div {...fadeIn} transition={{ delay: 0.3 }}>
-            <h3 className="text-2xl font-extrabold text-gray-900 dark:text-white mb-4">Νομικά</h3>
-            <div className="space-y-2">
-              <NavLink to="/privacy-policy" className="block text-gray-600 dark:text-gray-300 hover:text-pink-600">Πολιτική Απορρήτου</NavLink>
-              <NavLink to="/data" className="block text-gray-600 dark:text-gray-300 hover:text-pink-600">Προσωπικά Δεδομένα</NavLink>
+          <motion.div
+            {...fadeIn}
+            transition={{ delay: 0.15 }}
+            className="text-center md:px-6 flex flex-col items-center"
+          >
+            <h3 className="text-lg font-extrabold text-black dark:text-gray-100 mb-3 w-full">Socials</h3>
+            <div className="flex flex-col gap-2 text-black dark:text-gray-100 text-sm items-center">
+              <a
+                href="https://instagram.com/technotesgr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity justify-center"
+              >
+                <Instagram className="w-4 h-4" /> <span>Instagram</span>
+              </a>
+              <a
+                href="https://tiktok.com/@technotesgr"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity justify-center"
+              >
+                <Music2 className="w-4 h-4" /> <span>TikTok</span>
+              </a>
+              <a
+                href="https://www.linkedin.com/company/technotesgr/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity justify-center"
+              >
+                <Linkedin className="w-4 h-4" /> <span>LinkedIn</span>
+              </a>
+              <a
+                href="https://www.youtube.com/@technotesgr-elenizafeiri"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity justify-center"
+              >
+                <Youtube className="w-4 h-4" /> <span>YouTube</span>
+              </a>
+              <a
+                href={DISCORD_INVITE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:opacity-80 transition-opacity justify-center"
+              >
+                <FaDiscord className="w-4 h-4" /> <span>Discord</span>
+              </a>
+            </div>
+          </motion.div>
+
+          <motion.div
+            {...fadeIn}
+            transition={{ delay: 0.25 }}
+            className="text-center md:text-right md:pl-6 flex flex-col items-center md:items-end"
+          >
+            <h3 className="text-lg font-extrabold text-black dark:text-gray-100 mb-3 w-full md:w-auto">
+              Τοποθεσία
+            </h3>
+            <div className="flex flex-col gap-2 text-black dark:text-gray-100 text-sm items-center md:items-end">
+              <div className="inline-flex items-center gap-2 justify-center md:justify-end">
+                <span role="img" aria-label="location">
+                  📍
+                </span>
+                <span>Αθήνα, Ελλάδα</span>
+              </div>
+              <p className="text-xs text-black/80 dark:text-gray-200 max-w-xs">
+                Απάντηση σε μηνύματα εντός <strong className="font-semibold">48 ωρών</strong> (εργάσιμες).
+              </p>
             </div>
           </motion.div>
         </div>
 
-        <div className="bg-white/40 dark:bg-black/20 py-6 text-center border-t border-pink-100 dark:border-gray-800">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            © {currentYear} technotesgr. All rights reserved.
-          </p>
-          <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">
-            Made with <motion.span className="inline-block text-pink-600" animate={{ scale: [1, 1.3, 1] }} transition={{ duration: 1, repeat: Infinity }}>♡</motion.span> by{' '}
-            <span className="font-semibold text-pink-600">feirw, a-reynbaw & mgiannopoulos24</span>
-          </p>
+        <div className="relative z-10 py-4">
+          <div className="container mx-auto px-6 text-center text-xs text-gray-600 dark:text-gray-700">
+            <span>All Rights Reserved © technotesgr • {currentYear}</span>
+          </div>
         </div>
       </footer>
+
+      <CookieConsent />
     </div>
   );
 };

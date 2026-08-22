@@ -81,45 +81,45 @@ const QuizMenu: React.FC<QuizMenuProps> = ({ onSelect, onClose, categoryAnswers 
   // UI State
   const [showSortMenu, setShowSortMenu] = useState<boolean>(false);
   const [showFilterMenu, setShowFilterMenu] = useState<boolean>(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const dialogRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
+  const loadQuizzes = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Cast to QuizData[] to ensure type safety if utils returns something else
+      const data = (await fetchAllQuizzes()) as QuizData[];
+
+      const withProgress: ProcessedQuiz[] = (Array.isArray(data) ? data : []).map((quiz) => {
+        const quizAnswers = categoryAnswers[quiz.id] || {};
+        const answered = Object.keys(quizAnswers).length;
+        const total = quiz?.questions?.length || 0;
+        const percent = total ? Math.round((answered / total) * 100) : 0;
+
+        const correctAnswers = Object.values(quizAnswers).filter((ans, idx) => {
+          // Handle cases where ans might be a number or an object
+          const selectedIdx = typeof ans === 'number' ? ans : ans.selectedAnswer;
+          return quiz.questions[idx]?.answers?.[selectedIdx]?.correct;
+        }).length;
+
+        return { ...quiz, answered, total, percent, correctAnswers };
+      });
+      setQuizzes(withProgress);
+    } catch (e) {
+      console.error('Error loading quizzes:', e);
+      setError('Αποτυχία φόρτωσης κεφαλαίων. Δοκίμασε ξανά.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Load quizzes
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        // Cast to QuizData[] to ensure type safety if utils returns something else
-        const data = (await fetchAllQuizzes()) as QuizData[];
-
-        const withProgress: ProcessedQuiz[] = (Array.isArray(data) ? data : []).map((quiz) => {
-          const quizAnswers = categoryAnswers[quiz.id] || {};
-          const answered = Object.keys(quizAnswers).length;
-          const total = quiz?.questions?.length || 0;
-          const percent = total ? Math.round((answered / total) * 100) : 0;
-
-          const correctAnswers = Object.values(quizAnswers).filter((ans, idx) => {
-            // Handle cases where ans might be a number or an object
-            const selectedIdx = typeof ans === 'number' ? ans : ans.selectedAnswer;
-            return quiz.questions[idx]?.answers?.[selectedIdx]?.correct;
-          }).length;
-
-          return { ...quiz, answered, total, percent, correctAnswers };
-        });
-        setQuizzes(withProgress);
-      } catch (e) {
-        console.error('Error loading quizzes:', e);
-        setError('Αποτυχία φόρτωσης κεφαλαίων. Δοκίμασε ξανά.');
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
+    void loadQuizzes();
   }, [categoryAnswers]);
 
   // Keyboard shortcuts
@@ -247,7 +247,7 @@ const QuizMenu: React.FC<QuizMenuProps> = ({ onSelect, onClose, categoryAnswers 
       const newAnswers = { ...categoryAnswers };
       delete newAnswers[quiz.id];
       localStorage.setItem('quizProgress', JSON.stringify(newAnswers));
-      window.location.reload();
+      void loadQuizzes();
     }
   };
 
@@ -488,7 +488,7 @@ const QuizMenu: React.FC<QuizMenuProps> = ({ onSelect, onClose, categoryAnswers 
                 <h3 className="text-xl font-bold text-red-800 mb-2">Σφάλμα</h3>
                 <p className="text-red-600 mb-4">{error}</p>
                 <button
-                  onClick={() => window.location.reload()}
+                  onClick={() => void loadQuizzes()}
                   className="px-6 py-2 bg-red-500 text-white rounded-xl font-semibold hover:bg-red-600 transition-colors"
                 >
                   Δοκίμασε ξανά

@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.technotes.gr/sitemap.xml
+
+# LLM / AI crawlers context
+# https://www.technotes.gr/llms.txt

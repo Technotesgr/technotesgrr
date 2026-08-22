@@ -11,8 +11,9 @@ import {
   Flag,
   Lightbulb,
 } from 'lucide-react';
-import { useAuth } from '../../contexts/AuthContext';
-import { supabase } from '../../utils/supabaseClient';
+import { apiFetch } from '@/utils/apiClient';
+import { getBackendUrl } from '@/utils/backendUrl';
+import ShareResultButton from '@/components/other/ShareResultButton';
 
 // --- Types ---
 
@@ -61,9 +62,9 @@ interface SubmitResponse {
 
 // --- Constants ---
 
-const BRAND = '#fda8a9';
-const BRAND_DARK = '#f88b8c';
-const BACKEND_URL = 'http://localhost:8001';
+const BRAND = '#f07f97';
+const BRAND_DARK = '#e06d88';
+const BACKEND_URL = getBackendUrl();
 
 const QuizDialog: React.FC<QuizDialogProps> = ({
   quiz,
@@ -72,9 +73,7 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
   onQuestionAnswered,
   selectedAnswers,
 }) => {
-  const { user } = useAuth();
   const [current, setCurrent] = useState<number>(0);
-  const [loading, setLoading] = useState<boolean>(false);
   const [showConfetti, setShowConfetti] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [score, setScore] = useState<Score>({ correct: 0, total: 0 });
@@ -112,6 +111,32 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
       setShowExplanation(false);
     }
   }, [isOpen, quiz]);
+
+  // Lock background scroll while quiz is open (iOS-safe).
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const scrollY = window.scrollY;
+    const { body } = document;
+    const prev = {
+      position: body.style.position,
+      top: body.style.top,
+      width: body.style.width,
+      overflow: body.style.overflow,
+    };
+    body.style.position = 'fixed';
+    body.style.top = `-${scrollY}px`;
+    body.style.width = '100%';
+    body.style.overflow = 'hidden';
+
+    return () => {
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.width = prev.width;
+      body.style.overflow = prev.overflow;
+      window.scrollTo(0, scrollY);
+    };
+  }, [isOpen]);
 
   // Show explanation automatically if the current question is already answered
   useEffect(() => {
@@ -157,63 +182,34 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
   const handleSelect = useCallback(
     async (idx: number) => {
       // Prevent selection if already answered or loading or missing props
-      if (selected !== null || !onQuestionAnswered || loading || !quiz || !question) return;
-
-      setLoading(true);
+      if (selected !== null || !onQuestionAnswered || !quiz || !question) return;
       setError(null);
 
       try {
-        // 1. Get session for token
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-        const token = session?.access_token;
+        const localIsCorrect = Boolean(question.answers?.[idx]?.correct);
+        // Update UI immediately to remove perceived lag between questions.
+        onQuestionAnswered(quiz.id, current, idx, localIsCorrect, localIsCorrect ? 10 : 0);
 
-        if (!token) {
-          throw new Error('User not authenticated');
-        }
+        const nickname = 'Visitor';
 
-        // 2. Determine nickname
-        const nickname = user?.username || user?.email?.split('@')[0] || 'Anonymous';
-
-        const response = await fetch(`${BACKEND_URL}/api/quiz/submit`, {
+        void apiFetch<SubmitResponse>(`${BACKEND_URL}/api/quiz/submit`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
           },
+          timeoutMs: 8000,
+          retries: 1,
           body: JSON.stringify({
             nickname,
             question_id: question.id,
             selected_answer: idx,
           }),
         });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result: SubmitResponse = await response.json();
-
-        onQuestionAnswered(quiz.id, current, idx, result.correct, result.points_earned);
-
-        // Auto-advance if correct and not last question
-        if (!isLastQuestion && result.correct) {
-          setTimeout(() => {
-            // Check if component is still mounted/valid before moving
-            setCurrent((prev) => (prev === current ? prev + 1 : prev));
-            setShowExplanation(false);
-            setError(null);
-          }, 1500);
-        }
       } catch (err) {
         console.error('Error submitting answer:', err);
-        setError('Σφάλμα κατά την υποβολή. Ελέγξτε τη σύνδεσή σας.');
-      } finally {
-        setLoading(false);
       }
     },
-    [selected, onQuestionAnswered, loading, question, quiz, current, isLastQuestion, user]
+    [selected, onQuestionAnswered, question, quiz]
   );
 
   const handleNext = useCallback(() => {
@@ -262,10 +258,10 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+      <div className="fixed inset-0 flex items-center justify-center p-3 sm:p-6 z-50 overflow-hidden overscroll-none">
         {/* Backdrop */}
         <motion.div
-          className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+          className="absolute inset-0 bg-black/50 backdrop-blur-sm touch-none"
           onClick={onClose}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -305,17 +301,17 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
 
         {/* Dialog */}
         <motion.div
-          className="relative w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden bg-white"
-          style={{ border: `4px solid ${BRAND}`, maxHeight: '90vh' }}
+          className="relative w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden bg-white dark:bg-[#2d1c48] border-4 border-[#f07f97]"
+          style={{ maxHeight: '82dvh' }}
           initial={{ scale: 0.9, opacity: 0, y: 50 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.9, opacity: 0, y: 50 }}
           transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         >
           {/* Progress Bar */}
-          <div className="h-3 bg-gray-200 relative">
+          <div className="h-3 bg-gray-200 dark:bg-[#1a1028] relative">
             <motion.div
-              className="h-full bg-gradient-to-r from-pink-500 via-rose-500 to-red-500"
+              className="h-full bg-gradient-to-r from-[#f07f97] via-[#f07f97] to-[#e06d88]"
               initial={{ width: 0 }}
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.5, ease: 'easeOut' }}
@@ -327,13 +323,12 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
             </div>
           </div>
 
-          <div className="overflow-y-auto p-6 md:p-8" style={{ maxHeight: 'calc(90vh - 12px)' }}>
+          <div className="overflow-y-auto p-4 sm:p-6 md:p-8" style={{ maxHeight: 'calc(82dvh - 12px)' }}>
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-3 sm:mb-6">
               <div className="flex-1">
                 <motion.h3
-                  className="text-xl md:text-2xl font-black"
-                  style={{ color: BRAND_DARK }}
+                  className="text-lg sm:text-xl md:text-2xl font-black text-[#f07f97]"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                 >
@@ -348,13 +343,13 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
                       animate={{ opacity: 1 }}
                     >
                       <Trophy className="w-5 h-5 text-yellow-500" />
-                      <span className="text-sm font-semibold text-gray-600">
+                      <span className="text-sm font-semibold text-gray-600 dark:text-gray-300">
                         Σκορ: {score.correct}/{score.total} ({scorePercentage}%)
                       </span>
                     </motion.div>
                   )}
                   {unansweredCount > 0 && (
-                    <span className="text-sm text-gray-500">{unansweredCount} αναπάντητες</span>
+                    <span className="text-sm text-gray-500 dark:text-gray-400">{unansweredCount} αναπάντητες</span>
                   )}
                 </div>
               </div>
@@ -365,8 +360,8 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
                   onClick={toggleFlag}
                   className={`p-2 rounded-full transition-colors ${
                     isFlagged
-                      ? 'bg-red-100 text-red-600'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      ? 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-[#3a2658] dark:text-gray-300 dark:hover:bg-[#4a3568]'
                   }`}
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.9 }}
@@ -378,26 +373,48 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
                 {/* Close Button */}
                 <motion.button
                   onClick={onClose}
-                  className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-[#3a2658] transition-colors"
                   whileHover={{ scale: 1.1, rotate: 90 }}
                   whileTap={{ scale: 0.9 }}
                   aria-label="Κλείσιμο"
                 >
-                  <X className="w-6 h-6 text-gray-600" />
+                  <X className="w-6 h-6 text-gray-600 dark:text-gray-300" />
                 </motion.button>
               </div>
             </div>
 
+            {/* Completion celebration + share */}
+            <AnimatePresence>
+              {allAnswered && isLastQuestion && selected !== null && (
+                <motion.div
+                  className="mb-3 sm:mb-6 p-4 sm:p-5 md:p-6 rounded-2xl bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/20 border-2 border-green-300 dark:border-green-700 text-center"
+                  initial={{ opacity: 0, y: -10, height: 0 }}
+                  animate={{ opacity: 1, y: 0, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <p className="font-black text-lg md:text-xl text-green-800 dark:text-green-300 mb-1">
+                    🎉 Ολοκλήρωσες το «{quiz.title}»!
+                  </p>
+                  <p className="text-sm md:text-base text-green-700 dark:text-green-400 mb-4">
+                    Τελικό σκορ: {score.correct}/{score.total} ({scorePercentage}%)
+                  </p>
+                  <ShareResultButton
+                    data={{ kind: 'quiz', quizTitle: quiz.title, correct: score.correct, total: score.total }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Question */}
             <motion.div
-              className="mb-6 p-6 md:p-8 rounded-2xl bg-gradient-to-br from-pink-50 to-rose-50"
-              style={{ border: `2px solid ${BRAND}` }}
+              className="mb-3 sm:mb-6 p-4 sm:p-6 md:p-8 rounded-2xl bg-gradient-to-br from-pink-50 to-rose-50 dark:from-[#3a2658] dark:to-[#342052] border-2 border-[#f07f97]"
               key={`question-${current}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
             >
-              <p className="text-lg md:text-xl font-semibold text-gray-800 leading-relaxed">
+              <p className="text-base sm:text-lg md:text-xl font-semibold text-gray-800 dark:text-gray-100 leading-relaxed">
                 {question?.question}
               </p>
             </motion.div>
@@ -406,7 +423,7 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
             <AnimatePresence>
               {error && (
                 <motion.div
-                  className="mb-4 p-4 rounded-xl bg-red-50 border-2 border-red-300 flex items-center gap-3"
+                  className="mb-4 p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border-2 border-red-300 dark:border-red-800 flex items-center gap-3"
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
@@ -424,149 +441,135 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
                 </motion.div>
               )}
             </AnimatePresence>
-
             {/* Answers */}
-            <div className="space-y-3 mb-8">
-              {loading ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <motion.div
-                    className="w-16 h-16 rounded-full border-4 border-t-transparent"
-                    style={{ borderColor: BRAND }}
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  />
-                  <p className="mt-4 text-gray-500 font-medium">Υποβολή απάντησης...</p>
-                </div>
-              ) : (
-                question?.answers?.map((ans, idx) => {
-                  const isSelected = selected === idx;
-                  const isRevealed = selected !== null;
-                  const isCorrect = ans.correct;
+            <div className="space-y-2 sm:space-y-3 mb-4 sm:mb-8">
+              {question?.answers?.map((ans, idx) => {
+                const isSelected = selected === idx;
+                const isRevealed = selected !== null;
+                const isCorrect = ans.correct;
 
-                  return (
-                    <motion.button
-                      key={idx}
-                      onClick={() => handleSelect(idx)}
-                      disabled={isRevealed}
-                      className={`
-                        relative flex items-center gap-4 w-full px-5 py-4 md:px-6 md:py-5 rounded-xl
+                return (
+                  <motion.button
+                    key={idx}
+                    onClick={() => handleSelect(idx)}
+                    disabled={isRevealed}
+                    className={`
+                        relative flex items-center gap-3 sm:gap-4 w-full px-4 py-3 sm:px-5 sm:py-4 md:px-6 md:py-5 rounded-xl
                         border-2 font-semibold text-left transition-all
-                        ${!isRevealed ? 'bg-white border-pink-200 hover:border-pink-400 hover:shadow-xl cursor-pointer' : 'cursor-default'}
-                        ${isRevealed && isCorrect ? 'bg-green-50 border-green-500 shadow-lg' : ''}
-                        ${isRevealed && !isCorrect && isSelected ? 'bg-red-50 border-red-500 shadow-lg' : ''}
-                        ${isRevealed && !isCorrect && !isSelected ? 'bg-gray-50 border-gray-300 opacity-70' : ''}
+                        ${!isRevealed ? 'bg-white dark:bg-[#3a2658] border-pink-200 dark:border-white/15 hover:border-pink-400 dark:hover:border-[#f07f97] hover:shadow-xl cursor-pointer' : 'cursor-default'}
+                        ${isRevealed && isCorrect ? 'bg-green-50 dark:bg-green-950/40 border-green-500 dark:border-green-600 shadow-lg' : ''}
+                        ${isRevealed && !isCorrect && isSelected ? 'bg-red-50 dark:bg-red-950/40 border-red-500 dark:border-red-600 shadow-lg' : ''}
+                        ${isRevealed && !isCorrect && !isSelected ? 'bg-gray-50 dark:bg-[#342052] border-gray-300 dark:border-gray-600 opacity-70' : ''}
                         ${isRevealed ? '' : 'hover:transform hover:scale-[1.01]'}
                       `}
-                      initial={{ opacity: 0, x: -30 }}
-                      animate={{
-                        opacity: 1,
-                        x: 0,
-                        scale: isRevealed && isSelected ? [1, 1.02, 1] : 1,
-                      }}
-                      transition={{
-                        delay: idx * 0.08,
-                        scale: { duration: 0.3 },
-                      }}
-                      whileHover={!isRevealed ? { x: 6 } : {}}
-                      whileTap={!isRevealed ? { scale: 0.98 } : {}}
-                    >
-                      {/* Answer Letter */}
-                      <div
-                        className={`
-                          flex items-center justify-center w-10 h-10 rounded-full font-bold text-base flex-shrink-0
+                    initial={{ opacity: 0, x: -30 }}
+                    animate={{
+                      opacity: 1,
+                      x: 0,
+                      scale: 1,
+                    }}
+                    transition={{
+                      delay: idx * 0.08,
+                    }}
+                    whileHover={!isRevealed ? { x: 6 } : {}}
+                    whileTap={!isRevealed ? { scale: 0.98 } : {}}
+                  >
+                    {/* Answer Letter */}
+                    <div
+                      className={`
+                          flex items-center justify-center w-8 h-8 sm:w-10 sm:h-10 rounded-full font-bold text-sm sm:text-base flex-shrink-0
                           transition-all duration-300
-                          ${!isRevealed ? 'bg-pink-100 text-pink-600' : ''}
+                          ${!isRevealed ? 'bg-pink-100 text-pink-600 dark:bg-[#f07f97]/20 dark:text-[#f07f97]' : ''}
                           ${isRevealed && isCorrect ? 'bg-green-500 text-white' : ''}
-                          ${isRevealed && !isCorrect ? 'bg-gray-400 text-gray-700' : ''}
+                          ${isRevealed && !isCorrect ? 'bg-gray-400 text-gray-700 dark:bg-gray-600 dark:text-gray-200' : ''}
                         `}
+                    >
+                      {String.fromCharCode(65 + idx)}
+                    </div>
+
+                    {/* Answer Text */}
+                    <span
+                      className={`
+                          flex-1 text-sm sm:text-base md:text-lg
+                          ${isRevealed && isCorrect ? 'text-green-800 dark:text-green-300 font-bold' : ''}
+                          ${isRevealed && !isCorrect && isSelected ? 'text-red-800 dark:text-red-300' : ''}
+                          ${!isRevealed ? 'text-gray-800 dark:text-gray-100' : ''}
+                        `}
+                    >
+                      {ans.text}
+                    </span>
+
+                    {/* Icons */}
+                    {isRevealed && isCorrect && (
+                      <motion.div
+                        initial={{ scale: 0, rotate: -180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: 'spring', stiffness: 500, delay: 0.1 }}
                       >
-                        {String.fromCharCode(65 + idx)}
+                        <CheckCircle className="w-7 h-7 text-green-500" />
+                      </motion.div>
+                    )}
+                    {isRevealed && isSelected && !isCorrect && (
+                      <motion.div
+                        initial={{ scale: 0, rotate: 180 }}
+                        animate={{ scale: 1, rotate: 0 }}
+                        transition={{ type: 'spring', stiffness: 500, delay: 0.1 }}
+                      >
+                        <XCircle className="w-7 h-7 text-red-500" />
+                      </motion.div>
+                    )}
+
+                    {/* Keyboard Hint */}
+                    {!isRevealed && (
+                      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <span className="text-xs font-mono bg-gray-200 dark:bg-[#2d1c48] px-2 py-1 rounded text-gray-600 dark:text-gray-300">
+                          {idx + 1}
+                        </span>
                       </div>
-
-                      {/* Answer Text */}
-                      <span
-                        className={`
-                          flex-1 text-base md:text-lg
-                          ${isRevealed && isCorrect ? 'text-green-800 font-bold' : ''}
-                          ${isRevealed && !isCorrect && isSelected ? 'text-red-800' : ''}
-                          ${!isRevealed ? 'text-gray-800' : ''}
-                        `}
-                      >
-                        {ans.text}
-                      </span>
-
-                      {/* Icons */}
-                      {isRevealed && isCorrect && (
-                        <motion.div
-                          initial={{ scale: 0, rotate: -180 }}
-                          animate={{ scale: 1, rotate: 0 }}
-                          transition={{ type: 'spring', stiffness: 500, delay: 0.1 }}
-                        >
-                          <CheckCircle className="w-7 h-7 text-green-500" />
-                        </motion.div>
-                      )}
-                      {isRevealed && isSelected && !isCorrect && (
-                        <motion.div
-                          initial={{ scale: 0, rotate: 180 }}
-                          animate={{ scale: 1, rotate: 0 }}
-                          transition={{ type: 'spring', stiffness: 500, delay: 0.1 }}
-                        >
-                          <XCircle className="w-7 h-7 text-red-500" />
-                        </motion.div>
-                      )}
-
-                      {/* Keyboard Hint */}
-                      {!isRevealed && (
-                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <span className="text-xs font-mono bg-gray-200 px-2 py-1 rounded text-gray-600">
-                            {idx + 1}
-                          </span>
-                        </div>
-                      )}
-                    </motion.button>
-                  );
-                })
-              )}
+                    )}
+                  </motion.button>
+                );
+              })}
             </div>
 
             {/* Explanation (if answered) */}
             <AnimatePresence>
               {selected !== null && question?.explanation && showExplanation && (
                 <motion.div
-                  className="mb-6 p-5 rounded-xl bg-blue-50 border-2 border-blue-200"
+                  className="mb-4 sm:mb-6 p-3 sm:p-5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border-2 border-blue-200 dark:border-blue-800"
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.4 }}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-bold text-blue-800 flex items-center gap-2">
+                    <h4 className="font-bold text-blue-800 dark:text-blue-300 flex items-center gap-2">
                       <Lightbulb className="w-5 h-5" />
                       Επεξήγηση:
                     </h4>
                     <button
                       onClick={() => setShowExplanation(false)}
-                      className="text-blue-600 hover:text-blue-800 text-sm underline"
+                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 text-sm underline"
                     >
                       Απόκρυψη
                     </button>
                   </div>
-                  <p className="text-blue-700">{question.explanation}</p>
+                  <p className="text-blue-700 dark:text-blue-200">{question.explanation}</p>
                 </motion.div>
               )}
             </AnimatePresence>
 
             {/* Navigation */}
-            <div className="flex justify-between items-center pt-6 border-t-2 border-pink-100">
+            <div className="flex justify-between items-center pt-3 sm:pt-6 border-t-2 border-pink-100 dark:border-white/10">
               <motion.button
                 onClick={handlePrevious}
                 disabled={current === 0}
                 className={`
-                  flex items-center gap-2 px-5 py-3 rounded-xl font-semibold transition-all
+                  flex items-center gap-1.5 sm:gap-2 px-3 py-2.5 sm:px-5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold transition-all
                   ${
                     current === 0
-                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                      : 'bg-white text-gray-700 border-2 border-pink-200 hover:border-pink-400 hover:shadow-lg'
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-[#1a1028] dark:text-gray-600'
+                      : 'bg-white dark:bg-[#3a2658] text-gray-700 dark:text-gray-200 border-2 border-pink-200 dark:border-white/15 hover:border-pink-400 dark:hover:border-[#f07f97] hover:shadow-lg'
                   }
                 `}
                 whileHover={current > 0 ? { scale: 1.05, x: -4 } : {}}
@@ -580,7 +583,11 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
               {/* Question Indicators */}
               <div className="hidden md:flex gap-2 overflow-x-auto max-w-md px-2">
                 {quiz.questions.map((_, idx) => {
-                  const isAnswered = selectedAnswers?.[idx] !== undefined;
+                  const sel = selectedAnswers?.[idx];
+                  const isAnswered = sel !== undefined;
+                  const isCorrectSelected = isAnswered
+                    ? Boolean(quiz.questions[idx]?.answers?.[sel as number]?.correct)
+                    : false;
                   const isFlaggedQ = flaggedQuestions.has(idx);
 
                   return (
@@ -589,15 +596,16 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
                       onClick={() => goToQuestion(idx)}
                       className={`
                         relative w-8 h-8 rounded-full font-bold text-xs transition-all flex-shrink-0
-                        ${current === idx ? 'bg-gradient-to-r from-pink-500 to-rose-500 text-white scale-110 ring-2 ring-pink-300' : ''}
-                        ${isAnswered && current !== idx ? 'bg-green-200 text-green-700' : ''}
-                        ${!isAnswered && current !== idx ? 'bg-gray-200 text-gray-600 hover:bg-gray-300' : ''}
+                        ${current === idx ? 'bg-gradient-to-r from-[#f07f97] to-[#e06d88] text-white scale-110 ring-2 ring-[#f07f97]/40' : ''}
+                        ${isAnswered && current !== idx && isCorrectSelected ? 'bg-green-200 text-green-700 dark:bg-green-900/50 dark:text-green-300' : ''}
+                        ${isAnswered && current !== idx && !isCorrectSelected ? 'bg-red-200 text-red-700 dark:bg-red-900/50 dark:text-red-300' : ''}
+                        ${!isAnswered && current !== idx ? 'bg-gray-200 text-gray-600 hover:bg-gray-300 dark:bg-[#3a2658] dark:text-gray-300 dark:hover:bg-[#4a3568]' : ''}
                       `}
                       aria-label={`Μετάβαση στην ερώτηση ${idx + 1}`}
                     >
                       {idx + 1}
                       {isFlaggedQ && (
-                        <Flag className="absolute -top-1 -right-1 w-3 h-3 text-red-500 fill-red-500 bg-white rounded-full p-0.5 border border-red-500" />
+                        <Flag className="absolute -top-1 -right-1 w-3 h-3 text-red-500 fill-red-500 bg-white dark:bg-[#2d1c48] rounded-full p-0.5 border border-red-500" />
                       )}
                     </button>
                   );
@@ -608,7 +616,7 @@ const QuizDialog: React.FC<QuizDialogProps> = ({
                 onClick={handleNext}
                 disabled={false}
                 className={`
-                  flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-white shadow-lg
+                  flex items-center gap-1.5 sm:gap-2 px-3 py-2.5 sm:px-5 sm:py-3 rounded-xl text-sm sm:text-base font-bold text-white shadow-lg
                   ${isLastQuestion ? 'bg-gradient-to-r from-green-500 to-emerald-500' : ''}
                 `}
                 style={{
